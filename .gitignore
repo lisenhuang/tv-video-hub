@@ -59,3 +59,19 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# macOS (this is a cross-platform repo; the Android .gitignore also ignores these)
+.DS_Store
+**/.DS_Store
+
+# Visual Studio (matches backend/.dockerignore)
+.vs/
+*.user
+
+# Rider / IntelliJ (the android-tv/.gitignore scopes these to that subtree only)
+.idea/
+*.iml
+
+# Editor swap/temp files
+*.swp
+*.swo
