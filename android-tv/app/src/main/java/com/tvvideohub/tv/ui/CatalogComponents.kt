@@ -19,11 +19,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.tvvideohub.tv.R
 import com.tvvideohub.tv.data.dto.AppRelease
 
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -35,7 +37,7 @@ fun ErrorState(message: String, onRetry: () -> Unit) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = "Couldn't load videos.",
+                text = stringResource(R.string.catalog_error),
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onBackground
             )
@@ -49,7 +51,7 @@ fun ErrorState(message: String, onRetry: () -> Unit) {
                 onClick = onRetry,
                 modifier = Modifier.focusRequester(retryFocus)
             ) {
-                Text(text = "Retry")
+                Text(text = stringResource(R.string.action_retry))
             }
         }
     }
@@ -93,8 +95,8 @@ fun UpdateOverlay(
                 )
 
                 is UpdateUiState.Downloading -> InfoPanel(
-                    title = "Downloading update…",
-                    body = "Please wait while the new version is downloaded and verified."
+                    title = stringResource(R.string.update_downloading),
+                    body = stringResource(R.string.update_downloading_body)
                 )
 
                 is UpdateUiState.NeedsPermission -> NeedsPermissionPanel(
@@ -125,12 +127,12 @@ private fun AvailablePanel(
     LaunchedEffect(Unit) { runCatching { updateFocus.requestFocus() } }
 
     Text(
-        text = "Update available",
+        text = stringResource(R.string.update_available_title),
         style = MaterialTheme.typography.headlineSmall,
         color = MaterialTheme.colorScheme.onSurface
     )
     Text(
-        text = "Version ${release.versionName} is available. Update now?",
+        text = stringResource(R.string.update_available_message, release.versionName),
         style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurface,
         modifier = Modifier.padding(top = 12.dp)
@@ -153,10 +155,10 @@ private fun AvailablePanel(
             onClick = onConfirm,
             modifier = Modifier.focusRequester(updateFocus)
         ) {
-            Text(text = "Update")
+            Text(text = stringResource(R.string.update_action_update))
         }
         Button(onClick = onDismiss) {
-            Text(text = "Later")
+            Text(text = stringResource(R.string.update_action_later))
         }
     }
 }
@@ -171,13 +173,12 @@ private fun NeedsPermissionPanel(
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 
     Text(
-        text = "Allow installs",
+        text = stringResource(R.string.update_install_permission_title),
         style = MaterialTheme.typography.headlineSmall,
         color = MaterialTheme.colorScheme.onSurface
     )
     Text(
-        text = "To self-update, allow this app to install unknown apps in the next " +
-            "screen, then choose Update again.",
+        text = stringResource(R.string.update_install_permission_message_choose),
         style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurface,
         modifier = Modifier.padding(top = 12.dp)
@@ -192,10 +193,10 @@ private fun NeedsPermissionPanel(
             onClick = onOpenSettings,
             modifier = Modifier.focusRequester(focus)
         ) {
-            Text(text = "Open settings")
+            Text(text = stringResource(R.string.update_action_open_settings))
         }
         Button(onClick = onDismiss) {
-            Text(text = "Later")
+            Text(text = stringResource(R.string.update_action_later))
         }
     }
 }
@@ -207,7 +208,7 @@ private fun FailedPanel(message: String, onDismiss: () -> Unit) {
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 
     Text(
-        text = "Update failed",
+        text = stringResource(R.string.update_failed_title),
         style = MaterialTheme.typography.headlineSmall,
         color = MaterialTheme.colorScheme.onSurface
     )
@@ -221,7 +222,7 @@ private fun FailedPanel(message: String, onDismiss: () -> Unit) {
         onClick = onDismiss,
         modifier = Modifier.focusRequester(focus)
     ) {
-        Text(text = "Dismiss")
+        Text(text = stringResource(R.string.action_dismiss))
     }
 }
 

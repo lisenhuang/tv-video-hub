@@ -10,6 +10,7 @@ import android.os.Environment
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import com.tvvideohub.tv.BuildConfig
+import com.tvvideohub.tv.R
 import com.tvvideohub.tv.data.dto.AppRelease
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -82,14 +83,14 @@ class UpdateManager(private val context: Context) {
             val downloaded = try {
                 downloadApk(release, targetFile)
             } catch (t: Throwable) {
-                return@withContext Result.Failed(t.message ?: "Download failed")
+                return@withContext Result.Failed(t.message ?: context.getString(R.string.update_error_download_failed))
             }
             if (!downloaded) {
-                return@withContext Result.Failed("Download did not complete")
+                return@withContext Result.Failed(context.getString(R.string.update_error_download_incomplete))
             }
             if (!verifySha256(targetFile, release.sha256)) {
                 targetFile.delete()
-                return@withContext Result.Failed("Update integrity check (SHA-256) failed")
+                return@withContext Result.Failed(context.getString(R.string.update_error_integrity))
             }
         }
 
@@ -112,7 +113,7 @@ class UpdateManager(private val context: Context) {
         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
 
         val request = DownloadManager.Request(Uri.parse(release.downloadUrl)).apply {
-            setTitle("TV Video Hub ${release.versionName}")
+            setTitle(context.getString(R.string.update_notification_title, release.versionName))
             setMimeType("application/vnd.android.package-archive")
             setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
             setAllowedOverRoaming(true)

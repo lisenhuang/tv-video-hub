@@ -17,6 +17,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
+import com.tvvideohub.tv.core.LocaleHelper
+import com.tvvideohub.tv.core.SettingsStore
 import com.tvvideohub.tv.data.CatalogRepository
 import com.tvvideohub.tv.download.DownloadUtil
 import kotlinx.coroutines.launch
@@ -50,6 +52,10 @@ class PlayerActivity : ComponentActivity() {
     private val videoId: String by lazy { intent.getStringExtra(EXTRA_VIDEO_ID).orEmpty() }
     private val directUri: String? by lazy { intent.getStringExtra(EXTRA_DIRECT_URI) }
     private val directMime: String? by lazy { intent.getStringExtra(EXTRA_DIRECT_MIME) }
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LocaleHelper.wrap(newBase, SettingsStore.get(newBase).language.value))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

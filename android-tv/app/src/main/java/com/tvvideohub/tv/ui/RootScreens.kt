@@ -18,12 +18,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.tvvideohub.tv.R
 import com.tvvideohub.tv.ui.components.OutlinedInput
 import kotlinx.coroutines.launch
 
@@ -31,7 +33,7 @@ import kotlinx.coroutines.launch
 fun SplashScreen() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(
-            text = "TV Video Hub",
+            text = stringResource(R.string.app_name),
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onBackground
         )
@@ -73,7 +75,7 @@ fun BaseUrlScreen(
             OutlinedInput(
                 value = url,
                 onValueChange = { url = it; testResult = null },
-                label = "Backend base URL (e.g. https://media.example.com)",
+                label = stringResource(R.string.setup_base_url_label),
                 keyboardType = KeyboardType.Uri,
                 imeAction = ImeAction.Done,
                 modifier = Modifier.fillMaxWidth()
@@ -81,7 +83,7 @@ fun BaseUrlScreen(
 
             testResult?.let { ok ->
                 Text(
-                    text = if (ok) "✓ Reachable" else "✗ Couldn't reach that URL",
+                    text = stringResource(if (ok) R.string.setup_reachable else R.string.setup_not_reachable),
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (ok) colors.primary else colors.onSurface,
                     modifier = Modifier.padding(top = 12.dp)
@@ -101,14 +103,24 @@ fun BaseUrlScreen(
                             testing = false
                         }
                     }
-                ) { Text(if (testing) "Testing…" else "Test") }
+                ) { Text(stringResource(if (testing) R.string.action_testing else R.string.action_test)) }
 
-                Button(onClick = { if (url.isNotBlank()) onSave(url) }) {
-                    Text("Save")
+                Button(onClick = {
+                    // Validate it's a real tv-video-hub backend before saving — reject random URLs.
+                    if (url.isBlank() || testing) return@Button
+                    testing = true
+                    scope.launch {
+                        val ok = runCatching { onTest(url) }.getOrDefault(false)
+                        testing = false
+                        testResult = ok
+                        if (ok) onSave(url)
+                    }
+                }) {
+                    Text(stringResource(R.string.action_save))
                 }
 
                 if (onOpenDownloads != null) {
-                    Button(onClick = onOpenDownloads) { Text("Downloads") }
+                    Button(onClick = onOpenDownloads) { Text(stringResource(R.string.action_open_downloads)) }
                 }
             }
         }
@@ -121,16 +133,16 @@ fun OfflineScreen(onOpenDownloads: () -> Unit, onRetry: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("You're offline", style = MaterialTheme.typography.headlineMedium, color = colors.onBackground)
+            Text(stringResource(R.string.offline_title), style = MaterialTheme.typography.headlineMedium, color = colors.onBackground)
             Text(
-                "No internet connection. You can still watch videos you've downloaded.",
+                stringResource(R.string.offline_subtitle),
                 style = MaterialTheme.typography.bodyMedium,
                 color = colors.onSurface,
                 modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
             )
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Button(onClick = onOpenDownloads) { Text("View downloads") }
-                Button(onClick = onRetry) { Text("Retry") }
+                Button(onClick = onOpenDownloads) { Text(stringResource(R.string.offline_action_view_downloads)) }
+                Button(onClick = onRetry) { Text(stringResource(R.string.action_retry)) }
             }
         }
     }

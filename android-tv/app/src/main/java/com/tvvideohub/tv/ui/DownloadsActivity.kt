@@ -2,6 +2,7 @@
 
 package com.tvvideohub.tv.ui
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -27,11 +28,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.offline.Download
 import coil.compose.AsyncImage
+import com.tvvideohub.tv.R
+import com.tvvideohub.tv.core.LocaleHelper
+import com.tvvideohub.tv.core.SettingsStore
 import com.tvvideohub.tv.download.DownloadUtil
 import com.tvvideohub.tv.download.Downloads
 import com.tvvideohub.tv.download.OfflineVideo
@@ -50,6 +55,10 @@ import kotlinx.coroutines.delay
  */
 @OptIn(UnstableApi::class)
 class DownloadsActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LocaleHelper.wrap(newBase, SettingsStore.get(newBase).language.value))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent { AppTheme { DownloadsScreen() } }
@@ -73,14 +82,14 @@ private fun DownloadsScreen() {
     Box(Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 24.dp)) {
         Column(Modifier.fillMaxSize()) {
             Text(
-                "Downloads",
+                stringResource(R.string.downloads_title),
                 style = MaterialTheme.typography.headlineMedium,
                 color = colors.onBackground,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
             if (items.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No downloads yet.", style = MaterialTheme.typography.titleLarge, color = colors.onBackground)
+                    Text(stringResource(R.string.downloads_empty), style = MaterialTheme.typography.titleLarge, color = colors.onBackground)
                 }
             } else {
                 val columns = (LocalConfiguration.current.screenWidthDp / 220).coerceIn(2, 6)
@@ -132,10 +141,11 @@ private fun OfflineCard(item: OfflineVideo, onPlay: () -> Unit, onRemove: () -> 
                 }
             }
             val status = when (item.state) {
-                Download.STATE_COMPLETED -> "Play • tap-and-hold to remove"
-                Download.STATE_DOWNLOADING, Download.STATE_QUEUED -> "Downloading ${item.percentDownloaded.toInt()}% • tap to cancel"
-                Download.STATE_FAILED -> "Failed • tap to retry/remove"
-                else -> "Pending"
+                Download.STATE_COMPLETED -> stringResource(R.string.download_status_completed)
+                Download.STATE_DOWNLOADING, Download.STATE_QUEUED ->
+                    stringResource(R.string.download_status_downloading, item.percentDownloaded.toInt())
+                Download.STATE_FAILED -> stringResource(R.string.download_status_failed)
+                else -> stringResource(R.string.download_status_pending)
             }
             Text(
                 text = item.title,

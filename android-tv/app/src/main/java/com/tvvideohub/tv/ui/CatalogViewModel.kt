@@ -3,6 +3,7 @@ package com.tvvideohub.tv.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.tvvideohub.tv.R
 import com.tvvideohub.tv.data.CatalogRepository
 import com.tvvideohub.tv.data.dto.AppRelease
 import com.tvvideohub.tv.data.dto.VideoSummary
@@ -62,7 +63,9 @@ class CatalogViewModel(
                     if (videos.isEmpty()) CatalogUiState.Empty
                     else CatalogUiState.Content(videos)
             } catch (t: Throwable) {
-                _uiState.value = CatalogUiState.Error(t.message ?: "Unknown error")
+                _uiState.value = CatalogUiState.Error(
+                    t.message ?: getApplication<Application>().getString(R.string.catalog_error_unknown)
+                )
             }
         }
     }

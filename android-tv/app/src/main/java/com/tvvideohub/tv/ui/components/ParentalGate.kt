@@ -22,12 +22,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.tvvideohub.tv.R
 import kotlin.random.Random
 
 /**
@@ -37,7 +39,7 @@ import kotlin.random.Random
  */
 @Composable
 fun ParentalGate(
-    prompt: String = "Enter the answer to continue",
+    prompt: String = stringResource(R.string.parental_default_prompt),
     onPass: () -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -61,7 +63,7 @@ fun ParentalGate(
                 .padding(28.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("Parental check", style = MaterialTheme.typography.headlineSmall, color = colors.onSurface)
+            Text(stringResource(R.string.parental_check_title), style = MaterialTheme.typography.headlineSmall, color = colors.onSurface)
             Text(
                 prompt,
                 style = MaterialTheme.typography.bodyMedium,
@@ -69,7 +71,7 @@ fun ParentalGate(
                 modifier = Modifier.padding(top = 8.dp)
             )
             Text(
-                "$a × $b = ?",
+                stringResource(R.string.parental_problem, a, b),
                 style = MaterialTheme.typography.headlineMedium,
                 color = colors.onSurface,
                 modifier = Modifier.padding(top = 16.dp)
@@ -77,14 +79,14 @@ fun ParentalGate(
             OutlinedInput(
                 value = answer,
                 onValueChange = { new -> answer = new.filter(Char::isDigit); wrong = false },
-                label = "Answer",
+                label = stringResource(R.string.parental_answer_label),
                 keyboardType = KeyboardType.Number,
                 imeAction = ImeAction.Done,
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
             )
             if (wrong) {
                 Text(
-                    "That's not right — here's a new one.",
+                    stringResource(R.string.parental_wrong),
                     style = MaterialTheme.typography.labelMedium,
                     color = colors.primary,
                     modifier = Modifier.padding(top = 8.dp)
@@ -96,8 +98,8 @@ fun ParentalGate(
             ) {
                 Button(onClick = {
                     if (answer.toIntOrNull() == a * b) onPass() else { wrong = true; round++ }
-                }) { Text("OK") }
-                Button(onClick = onCancel) { Text("Cancel") }
+                }) { Text(stringResource(R.string.action_ok)) }
+                Button(onClick = onCancel) { Text(stringResource(R.string.action_cancel)) }
             }
         }
     }

@@ -1,6 +1,7 @@
 package com.tvvideohub.tv.data.api
 
 import com.tvvideohub.tv.data.dto.AppRelease
+import com.tvvideohub.tv.data.dto.HealthDto
 import com.tvvideohub.tv.data.dto.VideoDetail
 import com.tvvideohub.tv.data.dto.VideoListResponse
 import retrofit2.Response
@@ -10,9 +11,9 @@ import retrofit2.http.Path
 /** Retrofit description of the backend API. See repo README "API contract (v1)". */
 interface MediaHubApi {
 
-    /** Liveness probe used to validate a configured base URL. */
+    /** Health probe; its body carries the service identity used to validate a base URL. */
     @GET("api/health")
-    suspend fun health(): Response<Unit>
+    suspend fun health(): Response<HealthDto>
 
     @GET("api/videos")
     suspend fun getVideos(): VideoListResponse

@@ -1,13 +1,18 @@
 package com.tvvideohub.tv.ui
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tvvideohub.tv.BuildConfig
+import com.tvvideohub.tv.R
+import com.tvvideohub.tv.core.LocaleHelper
+import com.tvvideohub.tv.core.SettingsStore
 
 /**
  * Root activity. On every launch it evaluates [RootViewModel] to decide whether to show
@@ -18,6 +23,10 @@ import com.tvvideohub.tv.BuildConfig
 class MainActivity : ComponentActivity() {
 
     private lateinit var vm: RootViewModel
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LocaleHelper.wrap(newBase, SettingsStore.get(newBase).language.value))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,17 +43,16 @@ class MainActivity : ComponentActivity() {
                     is RootState.Loading -> SplashScreen()
 
                     is RootState.NeedsSetup -> BaseUrlScreen(
-                        title = "Welcome",
-                        subtitle = "Enter the address of your video backend to get started.",
+                        title = stringResource(R.string.setup_title),
+                        subtitle = stringResource(R.string.setup_subtitle),
                         initialUrl = vm.currentBaseUrl ?: BuildConfig.BACKEND_BASE_URL,
                         onTest = vm::test,
                         onSave = vm::saveBaseUrl,
                     )
 
                     is RootState.Reconfigure -> BaseUrlScreen(
-                        title = "Can't reach the backend",
-                        subtitle = "You're online, but ${s.attemptedUrl} didn't respond. " +
-                            "Check the address and try again.",
+                        title = stringResource(R.string.reconfigure_title),
+                        subtitle = stringResource(R.string.reconfigure_subtitle, s.attemptedUrl),
                         initialUrl = s.attemptedUrl,
                         onTest = vm::test,
                         onSave = vm::saveBaseUrl,

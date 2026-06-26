@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
@@ -42,6 +43,7 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import com.tvvideohub.tv.R
 import com.tvvideohub.tv.data.dto.VideoSummary
 import com.tvvideohub.tv.download.DownloadUtil
 
@@ -81,8 +83,8 @@ fun CatalogRoute(
 
             Box(Modifier.fillMaxSize()) {
                 when (val state = uiState) {
-                    is CatalogUiState.Loading -> CenteredMessage("Loading…")
-                    is CatalogUiState.Empty -> CenteredMessage("No videos available yet.")
+                    is CatalogUiState.Loading -> CenteredMessage(stringResource(R.string.catalog_loading))
+                    is CatalogUiState.Empty -> CenteredMessage(stringResource(R.string.catalog_empty))
                     is CatalogUiState.Error -> ErrorState(state.message, onRetry = vm::loadVideos)
                     is CatalogUiState.Content -> VideoGrid(
                         videos = state.videos,
@@ -110,14 +112,14 @@ private fun CatalogHeader(onOpenDownloads: () -> Unit, onOpenSettings: () -> Uni
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = "Videos",
+            text = stringResource(R.string.catalog_title),
             style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.weight(1f)
         )
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = onOpenDownloads) { Text("Downloads") }
-            Button(onClick = onOpenSettings) { Text("Settings") }
+            Button(onClick = onOpenDownloads) { Text(stringResource(R.string.action_open_downloads)) }
+            Button(onClick = onOpenSettings) { Text(stringResource(R.string.action_open_settings)) }
         }
     }
 }
@@ -191,7 +193,7 @@ private fun VideoCard(
                 }
                 if (isDownloaded) {
                     Text(
-                        text = "⬇ Offline",
+                        text = stringResource(R.string.badge_offline),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier

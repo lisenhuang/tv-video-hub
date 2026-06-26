@@ -2,6 +2,7 @@
 
 package com.tvvideohub.tv.ui
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -25,10 +26,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.offline.Download
+import com.tvvideohub.tv.R
+import com.tvvideohub.tv.core.LocaleHelper
+import com.tvvideohub.tv.core.SettingsStore
 import com.tvvideohub.tv.core.deviceStorage
 import com.tvvideohub.tv.core.formatBytes
 import com.tvvideohub.tv.download.DownloadUtil
@@ -45,6 +50,10 @@ import kotlinx.coroutines.delay
  */
 @OptIn(UnstableApi::class)
 class StorageActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LocaleHelper.wrap(newBase, SettingsStore.get(newBase).language.value))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent { AppTheme { StorageScreen() } }
@@ -72,7 +81,7 @@ private fun StorageScreen() {
             val items = DownloadUtil.cachedKeys(context).map { key ->
                 CachedItem(
                     key = key,
-                    title = titleById[key] ?: "Video ${key.take(8)}",
+                    title = titleById[key] ?: context.getString(R.string.storage_unknown_video, key.take(8)),
                     sizeBytes = DownloadUtil.cachedBytesFor(context, key),
                     isDownload = key in downloadIds,
                 )
@@ -91,7 +100,7 @@ private fun StorageScreen() {
 
     Box(Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 24.dp)) {
         Column(Modifier.fillMaxSize()) {
-            Text("Storage", style = MaterialTheme.typography.headlineMedium, color = colors.onBackground)
+            Text(stringResource(R.string.storage_title), style = MaterialTheme.typography.headlineMedium, color = colors.onBackground)
 
             // Summary
             Column(
@@ -103,12 +112,12 @@ private fun StorageScreen() {
                     .padding(16.dp)
             ) {
                 Text(
-                    "This app's cached videos: ${formatBytes(cacheUsed)}",
+                    stringResource(R.string.storage_cached_videos, formatBytes(cacheUsed)),
                     style = MaterialTheme.typography.titleMedium, color = colors.onSurface
                 )
                 val usedDevice = (totalBytes - freeBytes).coerceAtLeast(0)
                 Text(
-                    "Device storage: ${formatBytes(freeBytes)} free of ${formatBytes(totalBytes)}",
+                    stringResource(R.string.storage_device, formatBytes(freeBytes), formatBytes(totalBytes)),
                     style = MaterialTheme.typography.bodyMedium, color = colors.onSurface,
                     modifier = Modifier.padding(top = 4.dp)
                 )
@@ -126,12 +135,12 @@ private fun StorageScreen() {
                 Button(onClick = {
                     // Clear streamed (non-download) cache; downloads stay (manage in Downloads).
                     items.filter { !it.isDownload }.forEach { DownloadUtil.removeFromCache(context, it.key) }
-                }) { Text("Clear streaming cache") }
+                }) { Text(stringResource(R.string.storage_clear_streaming_cache)) }
             }
 
             if (items.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Nothing cached yet.", style = MaterialTheme.typography.titleMedium, color = colors.onBackground)
+                    Text(stringResource(R.string.storage_empty), style = MaterialTheme.typography.titleMedium, color = colors.onBackground)
                 }
             } else {
                 LazyColumn(
@@ -170,11 +179,14 @@ private fun StorageRow(item: CachedItem, onDelete: () -> Unit) {
                 item.title, style = MaterialTheme.typography.titleSmall, color = colors.onSurface,
                 maxLines = 1, overflow = TextOverflow.Ellipsis
             )
+            val kind = stringResource(
+                if (item.isDownload) R.string.storage_item_downloaded else R.string.storage_item_streaming
+            )
             Text(
-                "${formatBytes(item.sizeBytes)} • ${if (item.isDownload) "downloaded (offline)" else "streaming cache"}",
+                stringResource(R.string.storage_item_detail, formatBytes(item.sizeBytes), kind),
                 style = MaterialTheme.typography.labelSmall, color = colors.onSurface
             )
         }
-        Button(onClick = onDelete) { Text("Delete") }
+        Button(onClick = onDelete) { Text(stringResource(R.string.action_delete)) }
     }
 }

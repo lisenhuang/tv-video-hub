@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.height
@@ -36,6 +37,9 @@ import androidx.compose.ui.draw.clip
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.offline.Download
 import coil.compose.AsyncImage
+import com.tvvideohub.tv.R
+import com.tvvideohub.tv.core.LocaleHelper
+import com.tvvideohub.tv.core.SettingsStore
 import com.tvvideohub.tv.data.CatalogRepository
 import com.tvvideohub.tv.data.dto.VideoDetail
 import com.tvvideohub.tv.download.DownloadUtil
@@ -54,6 +58,10 @@ import kotlinx.coroutines.delay
 class DetailActivity : ComponentActivity() {
 
     private val videoId: String by lazy { intent.getStringExtra(EXTRA_ID).orEmpty() }
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LocaleHelper.wrap(newBase, SettingsStore.get(newBase).language.value))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -109,12 +117,12 @@ private fun DetailScreen(videoId: String, onBack: () -> Unit) {
         when {
             loadError -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Couldn't load this video.", style = MaterialTheme.typography.titleLarge, color = colors.onBackground)
-                    Button(onClick = onBack, modifier = Modifier.padding(top = 16.dp)) { Text("Back") }
+                    Text(stringResource(R.string.detail_load_error), style = MaterialTheme.typography.titleLarge, color = colors.onBackground)
+                    Button(onClick = onBack, modifier = Modifier.padding(top = 16.dp)) { Text(stringResource(R.string.action_back)) }
                 }
             }
             detail == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Loading…", style = MaterialTheme.typography.titleLarge, color = colors.onBackground)
+                Text(stringResource(R.string.detail_loading), style = MaterialTheme.typography.titleLarge, color = colors.onBackground)
             }
             else -> {
                 val d = detail!!
@@ -145,9 +153,9 @@ private fun DetailScreen(videoId: String, onBack: () -> Unit) {
                             modifier = Modifier.padding(top = 24.dp),
                             horizontalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            Button(onClick = { startPlayback(context, d, download) }) { Text("Play") }
+                            Button(onClick = { startPlayback(context, d, download) }) { Text(stringResource(R.string.action_play)) }
                             DownloadButton(context, d, download)
-                            Button(onClick = onBack) { Text("Back") }
+                            Button(onClick = onBack) { Text(stringResource(R.string.action_back)) }
                         }
                     }
                 }
@@ -163,7 +171,7 @@ private fun DownloadProgress(download: Download?, modifier: Modifier = Modifier)
     when (download?.state) {
         Download.STATE_DOWNLOADING, Download.STATE_QUEUED -> Column(modifier) {
             val pct = download.percentDownloaded.let { if (it.isNaN()) 0f else it }
-            Text("Downloading ${pct.toInt()}%", style = MaterialTheme.typography.labelMedium, color = colors.onSurface)
+            Text(stringResource(R.string.download_progress, pct.toInt()), style = MaterialTheme.typography.labelMedium, color = colors.onSurface)
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -182,9 +190,9 @@ private fun DownloadProgress(download: Download?, modifier: Modifier = Modifier)
             }
         }
         Download.STATE_COMPLETED ->
-            Text("✓ Available offline", style = MaterialTheme.typography.labelMedium, color = colors.primary, modifier = modifier)
+            Text(stringResource(R.string.download_available_offline), style = MaterialTheme.typography.labelMedium, color = colors.primary, modifier = modifier)
         Download.STATE_FAILED ->
-            Text("Download failed", style = MaterialTheme.typography.labelMedium, color = colors.onSurface, modifier = modifier)
+            Text(stringResource(R.string.download_failed), style = MaterialTheme.typography.labelMedium, color = colors.onSurface, modifier = modifier)
         else -> {}
     }
 }
@@ -194,13 +202,13 @@ private fun DownloadProgress(download: Download?, modifier: Modifier = Modifier)
 private fun DownloadButton(context: Context, detail: VideoDetail, download: Download?) {
     when (download?.state) {
         null, Download.STATE_FAILED, Download.STATE_REMOVING ->
-            Button(onClick = { Downloads.start(context, detail) }) { Text("Download") }
+            Button(onClick = { Downloads.start(context, detail) }) { Text(stringResource(R.string.action_download)) }
         Download.STATE_DOWNLOADING, Download.STATE_QUEUED ->
-            Button(onClick = { Downloads.remove(context, detail.id) }) { Text("Cancel") }
+            Button(onClick = { Downloads.remove(context, detail.id) }) { Text(stringResource(R.string.action_cancel)) }
         Download.STATE_COMPLETED ->
-            Button(onClick = { Downloads.remove(context, detail.id) }) { Text("Remove download") }
+            Button(onClick = { Downloads.remove(context, detail.id) }) { Text(stringResource(R.string.action_remove_download)) }
         else ->
-            Button(onClick = { Downloads.start(context, detail) }) { Text("Download") }
+            Button(onClick = { Downloads.start(context, detail) }) { Text(stringResource(R.string.action_download)) }
     }
 }
 

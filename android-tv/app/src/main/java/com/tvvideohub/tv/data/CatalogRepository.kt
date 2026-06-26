@@ -16,9 +16,16 @@ class CatalogRepository(
     private val api: MediaHubApi = ApiClient.service
 ) {
 
-    /** True if the configured backend answers its health probe. */
+    /**
+     * True only if the configured URL is genuinely a tv-video-hub backend: it must answer
+     * the health probe AND return the expected service marker. This rejects a random URL
+     * that merely returns HTTP 200.
+     */
     suspend fun isBackendReachable(): Boolean = withContext(Dispatchers.IO) {
-        runCatching { api.health().isSuccessful }.getOrDefault(false)
+        runCatching {
+            val resp = api.health()
+            resp.isSuccessful && resp.body()?.isThisBackend == true
+        }.getOrDefault(false)
     }
 
     suspend fun listVideos(): List<VideoSummary> = withContext(Dispatchers.IO) {
