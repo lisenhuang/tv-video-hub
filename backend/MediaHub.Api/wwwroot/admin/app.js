@@ -317,58 +317,43 @@ function selectTab(name) {
 
 // ---- Videos ----------------------------------------------------------------
 function wireVideoForm() {
-  // Toggle field visibility by selected source mode.
-  document.querySelectorAll('input[name="vmode"]').forEach((r) => {
-    r.addEventListener('change', () => applyVideoMode());
+  // Pick a file first → auto-fill the Title with the file's name (without its
+  // extension), unless the admin has already typed their own title. The backend
+  // auto-generates the object key, so a file (+ optional metadata) is all that's needed.
+  let titleEdited = false;
+  $('v-title').addEventListener('input', () => { titleEdited = true; });
+  $('v-file').addEventListener('change', () => {
+    const f = $('v-file').files[0];
+    if (f && !titleEdited) $('v-title').value = f.name.replace(/\.[^/.]+$/, '');
   });
-  applyVideoMode();
 
   $('upload-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const mode = document.querySelector('input[name="vmode"]:checked').value;
-    let res, data;
+    const file = $('v-file').files[0];
+    if (!file) { banner('Choose a file to upload.', 'error'); return; }
 
-    if (mode === 'upload') {
-      const file = $('v-file').files[0];
-      if (!file) { banner('Choose a file to upload.', 'error'); return; }
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('title', $('v-title').value);
-      fd.append('description', $('v-desc').value);
-      if ($('v-thumb').value) fd.append('thumbnailUrl', $('v-thumb').value);
-      if ($('v-duration').value) fd.append('durationSeconds', $('v-duration').value);
-      const r = await api('/api/admin/videos', { method: 'POST', body: fd });
-      res = r; try { data = await r.json(); } catch (_) {}
-    } else {
-      const body = {
-        title: $('v-title').value,
-        description: $('v-desc').value || null,
-        objectKey: $('v-objectkey').value,
-        thumbnailUrl: $('v-thumb').value || null,
-        durationSeconds: $('v-duration').value ? Number($('v-duration').value) : null,
-        mimeType: $('v-mime').value || null,
-      };
-      const r = await apiJson('/api/admin/videos', 'POST', body);
-      res = r.res; data = r.data;
-    }
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('title', $('v-title').value);
+    fd.append('description', $('v-desc').value);
+    if ($('v-thumb').value) fd.append('thumbnailUrl', $('v-thumb').value);
+    if ($('v-duration').value) fd.append('durationSeconds', $('v-duration').value);
+    if ($('v-mime').value) fd.append('mimeType', $('v-mime').value);
+
+    const res = await api('/api/admin/videos', { method: 'POST', body: fd });
+    let data = null;
+    try { data = await res.json(); } catch (_) { /* may be empty */ }
 
     if (res.ok) {
       banner('Video added.', 'success');
       $('upload-form').reset();
-      applyVideoMode();
+      titleEdited = false; // form cleared → let the next file auto-fill the title again
       await loadVideos();
     } else if (res.status === 401) {
       await refreshState();
     } else {
       banner((data && data.error) || 'Failed to add video.', 'error');
     }
-  });
-}
-
-function applyVideoMode() {
-  const mode = document.querySelector('input[name="vmode"]:checked').value;
-  document.querySelectorAll('[data-mode]').forEach((el) => {
-    show(el, el.dataset.mode === mode);
   });
 }
 

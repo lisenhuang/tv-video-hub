@@ -30,7 +30,11 @@ public sealed class VideoCreationService(VideoRepository repo, StorageRouter sto
         var title = form["title"].ToString();
         if (string.IsNullOrWhiteSpace(title)) title = Path.GetFileNameWithoutExtension(file.FileName);
 
-        var mime = string.IsNullOrWhiteSpace(file.ContentType) ? "video/mp4" : file.ContentType;
+        // MIME: an explicit override wins (optional form field); else the uploaded file's
+        // content type; else a safe default. Object key is always generated server-side.
+        var mimeOverride = form["mimeType"].ToString();
+        var mime = !string.IsNullOrWhiteSpace(mimeOverride) ? mimeOverride
+            : string.IsNullOrWhiteSpace(file.ContentType) ? "video/mp4" : file.ContentType;
         var key = $"videos/{id}/{SanitizeFileName(file.FileName)}";
 
         var videoBucket = await storage.GetVideoBucketAsync(ct);

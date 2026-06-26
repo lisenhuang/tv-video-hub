@@ -142,33 +142,29 @@
         <div class="card">
           <h2>Add a video</h2>
           <form id="upload-form" class="form" autocomplete="off">
-            <fieldset class="mode">
-              <legend>Source</legend>
-              <label class="radio"><input type="radio" name="vmode" value="upload" checked /> Upload a file</label>
-              <label class="radio"><input type="radio" name="vmode" value="reference" /> Reference an existing R2 object</label>
-            </fieldset>
-            <label>Title
-              <input id="v-title" type="text" name="title" />
-            </label>
-            <label>Description
-              <textarea id="v-desc" name="description" rows="2"></textarea>
-            </label>
-            <label data-mode="upload">File
+            <label>File
               <input id="v-file" type="file" name="file" accept="video/*" />
             </label>
-            <label data-mode="reference" hidden>Object key
-              <input id="v-objectkey" type="text" name="objectKey" placeholder="videos/foo.mp4" />
+            <label>Title
+              <input id="v-title" type="text" name="title" placeholder="auto-filled from the file name" />
+            </label>
+            <label>
+              <span class="lbl">Description <span class="hint">(optional)</span></span>
+              <textarea id="v-desc" name="description" rows="2"></textarea>
             </label>
             <div class="row">
-              <label>Thumbnail URL
+              <label>
+                <span class="lbl">Thumbnail URL <span class="hint">(optional)</span></span>
                 <input id="v-thumb" type="url" name="thumbnailUrl" />
               </label>
-              <label>Duration (sec)
+              <label>
+                <span class="lbl">Duration (sec) <span class="hint">(optional)</span></span>
                 <input id="v-duration" type="number" name="durationSeconds" min="0" />
               </label>
             </div>
-            <label data-mode="reference" hidden>MIME type
-              <input id="v-mime" type="text" name="mimeType" placeholder="video/mp4" />
+            <label>
+              <span class="lbl">MIME type <span class="hint">(optional)</span></span>
+              <input id="v-mime" type="text" name="mimeType" placeholder="auto-detected from the file" />
             </label>
             <button class="btn primary" type="submit">Add video</button>
           </form>
