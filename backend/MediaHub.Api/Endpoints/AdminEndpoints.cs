@@ -164,42 +164,49 @@ public static class AdminEndpoints
             return Results.Ok(dto);
         }).RequireAuthorization();
 
-        // ---- Cloudflare settings (auth) -------------------------------------
+        // ---- Settings: Cloudflare D1 + S3-compatible storage (auth) ---------
 
-        group.MapGet("/settings", (CloudflareSettingsProvider provider) =>
-            Results.Ok(MaskedView(provider.Current)))
+        group.MapGet("/settings", (SettingsProvider provider) =>
+            Results.Ok(MaskedView(provider.Cloudflare, provider.Storage)))
             .RequireAuthorization();
 
-        group.MapPut("/settings", (SettingsUpdateRequest body, CloudflareSettingsProvider provider) =>
+        group.MapPut("/settings", (SettingsUpdateRequest body, SettingsProvider provider) =>
         {
             // Start from the currently-persisted overrides so unspecified fields
             // are preserved, then apply the incoming edits.
             var overrides = provider.LoadOverrides();
+            var cf = overrides.Cloudflare;
+            var st = overrides.Storage;
 
-            // Non-secret fields: apply as given. A provided (even blank) value
-            // replaces the override; null/absent leaves it unchanged.
-            if (body.AccountId is not null) overrides.AccountId = Blank(body.AccountId);
-            if (body.D1DatabaseId is not null) overrides.D1.DatabaseId = Blank(body.D1DatabaseId);
-            if (body.R2VideoBucket is not null) overrides.R2.VideoBucket = Blank(body.R2VideoBucket);
-            if (body.R2ApkBucket is not null) overrides.R2.ApkBucket = Blank(body.R2ApkBucket);
-            if (body.R2ServiceUrl is not null) overrides.R2.ServiceUrl = Blank(body.R2ServiceUrl);
-            if (body.R2PresignTtlMinutes is { } ttl) overrides.R2.PresignTtlMinutes = ttl > 0 ? ttl : null;
+            // Database (Cloudflare D1). A provided (even blank) string replaces the
+            // override; null/absent leaves it unchanged.
+            if (body.AccountId is not null) cf.AccountId = Blank(body.AccountId);
+            if (body.D1DatabaseId is not null) cf.D1DatabaseId = Blank(body.D1DatabaseId);
+            if (!string.IsNullOrWhiteSpace(body.D1ApiToken)) cf.D1ApiToken = body.D1ApiToken;
 
-            // Secret fields: blank/absent means "leave unchanged"; only a non-blank
-            // value updates the stored secret.
-            if (!string.IsNullOrWhiteSpace(body.D1ApiToken)) overrides.D1.ApiToken = body.D1ApiToken;
-            if (!string.IsNullOrWhiteSpace(body.R2AccessKeyId)) overrides.R2.AccessKeyId = body.R2AccessKeyId;
-            if (!string.IsNullOrWhiteSpace(body.R2SecretAccessKey)) overrides.R2.SecretAccessKey = body.R2SecretAccessKey;
+            // Object storage (S3-compatible).
+            if (body.StorageServiceUrl is not null) st.ServiceUrl = Blank(body.StorageServiceUrl);
+            if (body.StorageRegion is not null) st.Region = Blank(body.StorageRegion);
+            if (body.StorageVideoBucket is not null) st.VideoBucket = Blank(body.StorageVideoBucket);
+            if (body.StorageApkBucket is not null) st.ApkBucket = Blank(body.StorageApkBucket);
+            if (body.StorageForcePathStyle is { } fps) st.ForcePathStyle = fps;
+            if (body.StoragePresignTtlMinutes is { } ttl) st.PresignTtlMinutes = ttl > 0 ? ttl : null;
+            if (body.StorageDisablePayloadSigning is { } dps) st.DisablePayloadSigning = dps;
+            if (body.StorageUseChecksumWhenRequired is { } cwr) st.UseChecksumWhenRequired = cwr;
 
-            var effective = provider.SaveOverrides(overrides);
-            return Results.Ok(MaskedView(effective));
+            // Storage secrets: blank/absent means "leave unchanged".
+            if (!string.IsNullOrWhiteSpace(body.StorageAccessKeyId)) st.AccessKeyId = body.StorageAccessKeyId;
+            if (!string.IsNullOrWhiteSpace(body.StorageSecretAccessKey)) st.SecretAccessKey = body.StorageSecretAccessKey;
+
+            provider.SaveOverrides(overrides);
+            return Results.Ok(MaskedView(provider.Cloudflare, provider.Storage));
         }).RequireAuthorization();
 
-        group.MapPost("/settings/test", async (D1Client d1, R2Storage r2, CancellationToken ct) =>
+        group.MapPost("/settings/test", async (D1Client d1, S3Storage storage, CancellationToken ct) =>
         {
             var d1Result = await TestD1Async(d1, ct);
-            var r2Result = await TestR2Async(r2, ct);
-            return Results.Ok(new SettingsTestDto(d1Result, r2Result));
+            var storageResult = await TestStorageAsync(storage, ct);
+            return Results.Ok(new SettingsTestDto(d1Result, storageResult));
         }).RequireAuthorization();
 
         return app;
@@ -220,16 +227,22 @@ public static class AdminEndpoints
 
     private static string? Blank(string s) => string.IsNullOrWhiteSpace(s) ? null : s;
 
-    private static SettingsViewDto MaskedView(EffectiveCloudflareConfig cf) => new(
+    private static SettingsViewDto MaskedView(EffectiveCloudflareConfig cf, EffectiveStorageConfig st) => new(
+        // Database (Cloudflare D1)
         AccountId: cf.AccountId,
         D1DatabaseId: cf.D1DatabaseId,
         D1ApiToken: Mask(cf.D1ApiToken),
-        R2AccessKeyId: Mask(cf.R2AccessKeyId),
-        R2SecretAccessKey: Mask(cf.R2SecretAccessKey),
-        R2VideoBucket: cf.R2VideoBucket,
-        R2ApkBucket: cf.R2ApkBucket,
-        R2ServiceUrl: cf.R2ServiceUrl,
-        R2PresignTtlMinutes: cf.R2PresignTtlMinutes);
+        // Object storage (S3-compatible)
+        StorageServiceUrl: st.ServiceUrl,
+        StorageRegion: st.Region,
+        StorageAccessKeyId: Mask(st.AccessKeyId),
+        StorageSecretAccessKey: Mask(st.SecretAccessKey),
+        StorageVideoBucket: st.VideoBucket,
+        StorageApkBucket: st.ApkBucket,
+        StorageForcePathStyle: st.ForcePathStyle,
+        StoragePresignTtlMinutes: st.PresignTtlMinutes,
+        StorageDisablePayloadSigning: st.DisablePayloadSigning,
+        StorageUseChecksumWhenRequired: st.UseChecksumWhenRequired);
 
     private static MaskedSecretDto Mask(string? secret)
     {
@@ -251,12 +264,12 @@ public static class AdminEndpoints
         }
     }
 
-    private static async Task<ConnectionResultDto> TestR2Async(R2Storage r2, CancellationToken ct)
+    private static async Task<ConnectionResultDto> TestStorageAsync(S3Storage storage, CancellationToken ct)
     {
         try
         {
-            await r2.ProbeAsync(r2.VideoBucket, ct);
-            return new ConnectionResultDto(true, $"R2 reachable (bucket '{r2.VideoBucket}').");
+            await storage.ProbeAsync(storage.VideoBucket, ct);
+            return new ConnectionResultDto(true, $"Object storage reachable (bucket '{storage.VideoBucket}').");
         }
         catch (Exception ex)
         {

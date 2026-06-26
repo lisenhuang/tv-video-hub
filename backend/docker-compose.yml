@@ -6,13 +6,18 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       # Provide these via a .env file or your orchestrator's secret store.
+      # Database: Cloudflare D1
       Cloudflare__AccountId: ${CF_ACCOUNT_ID}
       Cloudflare__D1__DatabaseId: ${CF_D1_DATABASE_ID}
       Cloudflare__D1__ApiToken: ${CF_D1_API_TOKEN}
-      Cloudflare__R2__AccessKeyId: ${CF_R2_ACCESS_KEY_ID}
-      Cloudflare__R2__SecretAccessKey: ${CF_R2_SECRET_ACCESS_KEY}
-      Cloudflare__R2__VideoBucket: ${CF_R2_VIDEO_BUCKET:-videos}
-      Cloudflare__R2__ApkBucket: ${CF_R2_APK_BUCKET:-apks}
+      # Object storage: any S3-compatible store (R2 / AWS S3 / MinIO / B2 / ...)
+      Storage__ServiceUrl: ${STORAGE_SERVICE_URL}
+      Storage__Region: ${STORAGE_REGION:-auto}
+      Storage__AccessKeyId: ${STORAGE_ACCESS_KEY_ID}
+      Storage__SecretAccessKey: ${STORAGE_SECRET_ACCESS_KEY}
+      Storage__VideoBucket: ${STORAGE_VIDEO_BUCKET:-videos}
+      Storage__ApkBucket: ${STORAGE_APK_BUCKET:-apks}
+      Storage__ForcePathStyle: ${STORAGE_FORCE_PATH_STYLE:-true}
       Api__Key: ${API_KEY}
     restart: unless-stopped
     # The admin account lives in D1 (survives rebuilds). Only dashboard-set

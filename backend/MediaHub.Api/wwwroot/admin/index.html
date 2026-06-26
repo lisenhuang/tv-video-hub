@@ -140,43 +140,70 @@
       <!-- Settings -->
       <div class="tab-panel" id="panel-settings" role="tabpanel" hidden>
         <div class="card">
-          <h2>Cloudflare settings</h2>
+          <h2>Settings</h2>
           <p class="muted">Overrides the env/appsettings defaults at runtime — no restart needed.
              Leave a secret blank to keep the current value.</p>
           <form id="settings-form" class="form" autocomplete="off">
-            <label>Account ID
-              <input id="s-account" name="accountId" type="text" />
-            </label>
-            <label>D1 Database ID
-              <input id="s-dbid" name="d1DatabaseId" type="text" />
-            </label>
-            <label>D1 API Token <span id="s-token-hint" class="hint"></span>
-              <input id="s-token" name="d1ApiToken" type="password" placeholder="leave blank to keep" autocomplete="new-password" />
-            </label>
-            <div class="row">
-              <label>R2 Access Key ID <span id="s-akid-hint" class="hint"></span>
-                <input id="s-akid" name="r2AccessKeyId" type="password" placeholder="leave blank to keep" autocomplete="new-password" />
+            <fieldset class="group">
+              <legend>Database (Cloudflare D1)</legend>
+              <label>Account ID
+                <input id="s-account" name="accountId" type="text" />
               </label>
-              <label>R2 Secret Access Key <span id="s-secret-hint" class="hint"></span>
-                <input id="s-secret" name="r2SecretAccessKey" type="password" placeholder="leave blank to keep" autocomplete="new-password" />
+              <label>D1 Database ID
+                <input id="s-dbid" name="d1DatabaseId" type="text" />
               </label>
-            </div>
-            <div class="row">
-              <label>Video bucket
-                <input id="s-vbucket" name="r2VideoBucket" type="text" />
+              <label>D1 API Token <span id="s-token-hint" class="hint"></span>
+                <input id="s-token" name="d1ApiToken" type="password" placeholder="leave blank to keep" autocomplete="new-password" />
               </label>
-              <label>APK bucket
-                <input id="s-abucket" name="r2ApkBucket" type="text" />
-              </label>
-            </div>
-            <div class="row">
-              <label>R2 Service URL
-                <input id="s-serviceurl" name="r2ServiceUrl" type="text" placeholder="derived from account id if blank" />
-              </label>
-              <label>Presign TTL (min)
-                <input id="s-ttl" name="r2PresignTtlMinutes" type="number" min="1" />
-              </label>
-            </div>
+            </fieldset>
+
+            <fieldset class="group">
+              <legend>Object storage (S3-compatible — R2, AWS S3, MinIO, B2, …)</legend>
+              <div class="row">
+                <label>Service URL (S3 endpoint)
+                  <input id="s-serviceurl" name="storageServiceUrl" type="text" placeholder="empty = AWS regional endpoint" />
+                </label>
+                <label>Region
+                  <input id="s-region" name="storageRegion" type="text" placeholder="auto (R2) · us-east-1 (AWS)" />
+                </label>
+              </div>
+              <div class="row">
+                <label>Access Key ID <span id="s-akid-hint" class="hint"></span>
+                  <input id="s-akid" name="storageAccessKeyId" type="password" placeholder="leave blank to keep" autocomplete="new-password" />
+                </label>
+                <label>Secret Access Key <span id="s-secret-hint" class="hint"></span>
+                  <input id="s-secret" name="storageSecretAccessKey" type="password" placeholder="leave blank to keep" autocomplete="new-password" />
+                </label>
+              </div>
+              <div class="row">
+                <label>Video bucket
+                  <input id="s-vbucket" name="storageVideoBucket" type="text" />
+                </label>
+                <label>APK bucket
+                  <input id="s-abucket" name="storageApkBucket" type="text" />
+                </label>
+              </div>
+              <div class="row">
+                <label>Presign TTL (min)
+                  <input id="s-ttl" name="storagePresignTtlMinutes" type="number" min="1" />
+                </label>
+                <label class="checkbox">
+                  <input id="s-forcepath" name="storageForcePathStyle" type="checkbox" />
+                  Force path-style addressing <span class="hint">(R2/MinIO on; AWS virtual-hosted off)</span>
+                </label>
+              </div>
+              <div class="row">
+                <label class="checkbox">
+                  <input id="s-disablesign" name="storageDisablePayloadSigning" type="checkbox" />
+                  Disable upload payload signing <span class="hint">(R2 needs this on)</span>
+                </label>
+                <label class="checkbox">
+                  <input id="s-checksum" name="storageUseChecksumWhenRequired" type="checkbox" />
+                  Checksums only when required <span class="hint">(keeps R2 presigns clean)</span>
+                </label>
+              </div>
+            </fieldset>
+
             <div class="actions">
               <button class="btn primary" type="submit">Save settings</button>
               <button id="test-btn" class="btn ghost" type="button">Test connection</button>

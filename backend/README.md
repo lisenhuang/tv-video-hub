@@ -3,11 +3,11 @@
 ASP.NET Core minimal API that serves the video catalog to the Android TV app,
 generates short-lived streaming URLs, and hosts APK builds for self-update.
 
-- **Database:** Cloudflare **D1** (SQLite) via the D1 HTTP query API — no EF Core,
-  no local DB file. Schema is created automatically at startup
-  (`CREATE TABLE IF NOT EXISTS`, additive only).
-- **Storage:** Cloudflare **R2** (S3-compatible) via `AWSSDK.S3`. Videos and APKs
-  live in R2; clients stream/download through presigned URLs.
+- 🗄️ **Database:** Cloudflare **D1** (SQLite) via the D1 HTTP query API — no EF Core,
+  no local file. Schema auto-created at startup (`CREATE TABLE IF NOT EXISTS`, additive).
+- 📦 **Object storage:** any **S3-compatible** store (Cloudflare R2, AWS S3, MinIO,
+  Backblaze B2, …) via `AWSSDK.S3`. Videos/APKs stream/download via presigned URLs.
+  Defaults are R2-ready out of the box.
 
 See the [repo root README](../README.md) for the full HTTP/JSON contract.
 
@@ -16,7 +16,7 @@ See the [repo root README](../README.md) for the full HTTP/JSON contract.
 ```
 MediaHub.Api/
 ├── Program.cs               composition root, DI, JSON, auth, startup schema init
-├── Options/                 CloudflareOptions, ApiOptions, SettingsOptions
+├── Options/                 CloudflareOptions (D1), StorageOptions (S3), ApiOptions, SettingsOptions
 ├── Data/
 │   ├── D1Client.cs          HTTP client for the D1 query API (parameterized SQL)
 │   ├── DatabaseInitializer.cs   ensures tables exist at boot (videos, app_releases, admins)
@@ -24,12 +24,13 @@ MediaHub.Api/
 │   ├── VideoCreationService.cs   shared create/delete logic (public + admin)
 │   ├── AppReleaseRepository.cs
 │   └── AdminRepository.cs
-├── Settings/                runtime-editable Cloudflare config
-│   ├── CloudflareSettings.cs        persisted override shape
-│   ├── SettingsStore.cs             read/write the JSON file
-│   ├── EffectiveCloudflareConfig.cs resolved (overrides ∪ defaults) snapshot
-│   └── CloudflareSettingsProvider.cs  singleton; live source for D1Client/R2Storage
-├── Storage/R2Storage.cs     presigned GET URLs + uploads/deletes against R2
+├── Settings/                runtime-editable config (live-reloaded)
+│   ├── PersistedSettings.cs            persisted override shape (Cloudflare + Storage)
+│   ├── SettingsStore.cs               read/write the JSON file
+│   ├── EffectiveCloudflareConfig.cs   resolved D1 snapshot
+│   ├── EffectiveStorageConfig.cs      resolved S3 storage snapshot
+│   └── SettingsProvider.cs            singleton; live source for D1Client/S3Storage
+├── Storage/S3Storage.cs     presigned GET URLs + upload/delete/exists against any S3 store
 ├── Auth/
 │   ├── ApiKeyFilter.cs      X-Api-Key guard for write endpoints
 │   └── PasswordHasher.cs    PBKDF2/SHA-256 (framework crypto, no packages)
@@ -55,11 +56,10 @@ MediaHub.Api/
 
 ### Admin dashboard (`/admin`)
 
-A self-contained dashboard (vanilla HTML/CSS/JS under `wwwroot/admin/`, light/dark
-theme) for managing the catalog and Cloudflare config from a browser. It uses
-**cookie authentication** — an *additional* auth path that does not affect the
-public endpoints or the `X-Api-Key` write path. Single-admin model: the first run
-creates exactly one admin via a setup form; after that, setup is permanently closed.
+Vanilla HTML/CSS/JS under `wwwroot/admin/` (light/dark theme) to manage the catalog
+and D1/storage config from a browser. **Cookie auth** — an *additional* path that
+doesn't affect public endpoints or the `X-Api-Key` write path. Single-admin: first
+run creates one admin via a setup form; afterwards setup is permanently closed.
 
 | Method | Route                          | Auth     | Purpose                                   |
 |--------|--------------------------------|----------|-------------------------------------------|
@@ -72,11 +72,11 @@ creates exactly one admin via a setup form; after that, setup is permanently clo
 | POST   | `/api/admin/change-password`   | cookie   | change the existing admin's password      |
 | GET    | `/api/admin/videos`            | cookie   | list catalog                              |
 | POST   | `/api/admin/videos`            | cookie   | add a video (multipart upload OR JSON ref)|
-| DELETE | `/api/admin/videos/{id}`       | cookie   | delete the D1 row **and** the R2 object   |
+| DELETE | `/api/admin/videos/{id}`       | cookie   | delete the D1 row **and** the storage object |
 | GET    | `/api/admin/releases`          | cookie   | list app releases (read-only)             |
-| GET    | `/api/admin/settings`          | cookie   | effective Cloudflare config, **secrets masked** |
+| GET    | `/api/admin/settings`          | cookie   | effective D1 + storage config, **secrets masked** |
 | PUT    | `/api/admin/settings`          | cookie   | edit config (blank secret = keep current) |
-| POST   | `/api/admin/settings/test`     | cookie   | probe D1 (`SELECT 1`) + R2 (list)         |
+| POST   | `/api/admin/settings/test`     | cookie   | probe D1 (`SELECT 1`) + storage (list)    |
 
 ¹ `setup` is public but only succeeds while there are **zero** admins.
 
@@ -84,65 +84,78 @@ The dashboard never receives full secrets — `GET/PUT /api/admin/settings` retu
 `{ isSet, last4 }` per secret. Saving a blank secret field leaves the stored value
 unchanged.
 
-## Configuration
+## ⚙️ Configuration
 
-Bind from environment variables (double underscore = nesting) or
-`dotnet user-secrets` in development. **Never commit real values.**
+Bind via env vars (double underscore = nesting) or `dotnet user-secrets`. **Never commit real values.**
 
-| variable                            | required | notes                                  |
-|-------------------------------------|----------|----------------------------------------|
-| `Cloudflare__AccountId`             | yes      | account id from the dashboard          |
-| `Cloudflare__D1__DatabaseId`        | yes      | D1 database id                         |
-| `Cloudflare__D1__ApiToken`          | yes      | API token, **D1 Edit** permission      |
-| `Cloudflare__R2__AccessKeyId`       | yes      | R2 S3 access key id                    |
-| `Cloudflare__R2__SecretAccessKey`   | yes      | R2 S3 secret                           |
-| `Cloudflare__R2__VideoBucket`       | no       | default `videos`                       |
-| `Cloudflare__R2__ApkBucket`         | no       | default `apks`                         |
-| `Cloudflare__R2__ServiceUrl`        | no       | derived from account id if blank       |
-| `Cloudflare__R2__PresignTtlMinutes` | no       | default `360`                          |
-| `Api__Key`                          | yes*     | required to enable write endpoints     |
-| `Settings__FilePath`                | no       | runtime settings file; default `App_Data/cloudflare.settings.json` |
+**🗄️ Database — Cloudflare D1**
 
-\* If `Api__Key` is empty, write endpoints return `503` (fail-closed).
+| variable                     | req | notes                              |
+|------------------------------|-----|------------------------------------|
+| `Cloudflare__AccountId`      | yes | account id                         |
+| `Cloudflare__D1__DatabaseId` | yes | D1 database id                     |
+| `Cloudflare__D1__ApiToken`   | yes | API token, **D1 Edit** permission  |
 
-### Runtime-editable Cloudflare config (dashboard)
+**📦 Object storage — S3-compatible (`Storage__*`)**
 
-The env vars above are the **bootstrap defaults**. Once an admin is logged in, the
-Cloudflare R2/D1 config can be viewed and edited in the dashboard and is persisted to
-a writable JSON file (`Settings__FilePath`, default `App_Data/cloudflare.settings.json`
-under the content root; the directory is created automatically). The effective config
-is **the persisted file merged over the env/appsettings defaults** — a persisted field
-wins only when non-empty, otherwise the default is used. `D1Client` and `R2Storage`
-read this effective config **per operation**, so edits take effect on the next request
-**without a restart** (the R2 S3 client is cached and rebuilt only when its relevant
-fields change).
+| variable                          | req | notes                                            |
+|-----------------------------------|-----|--------------------------------------------------|
+| `Storage__ServiceUrl`             | no  | S3 endpoint; **empty = AWS regional endpoint**   |
+| `Storage__Region`                 | no  | `auto` (R2) · `us-east-1` (AWS) · region (MinIO) |
+| `Storage__AccessKeyId`            | yes | access key id                                    |
+| `Storage__SecretAccessKey`        | yes | secret                                           |
+| `Storage__VideoBucket`            | no  | default `videos`                                 |
+| `Storage__ApkBucket`              | no  | default `apks`                                   |
+| `Storage__ForcePathStyle`         | no  | default `true` (R2/MinIO); AWS virtual-hosted → `false` |
+| `Storage__PresignTtlMinutes`      | no  | default `360`                                    |
+| `Storage__DisablePayloadSigning`  | no  | default `true` (R2 needs it)                     |
+| `Storage__UseChecksumWhenRequired`| no  | default `true` (clean R2 presigns)               |
 
-The settings file may contain secrets — it is `.gitignore`d (`App_Data/`). Back it up
-or mount it on a persistent volume if you rely on dashboard-set values; otherwise the
-app falls back to the env vars.
+**Other**
 
-#### First-run admin bootstrap (chicken-and-egg)
+| variable             | req  | notes                                          |
+|----------------------|------|------------------------------------------------|
+| `Api__Key`           | yes* | enables `X-Api-Key` writes (`503` if empty)    |
+| `Settings__FilePath` | no   | runtime settings file; default `App_Data/settings.json` |
 
-Creating the first admin (`POST /api/admin/setup`) writes a row to D1, which requires a
-**working D1 connection**. So D1 must be reachable via the env-var defaults at least
-once to bootstrap the admin. After that, the logged-in admin can edit R2 credentials
-(and even the D1 settings) from the dashboard. If you change the D1 credentials in the
-dashboard to something invalid, login/setup will fail until valid D1 settings are
-restored — either fix them via env vars (which the persisted file overrides only when
-non-empty) or delete/repair `App_Data/cloudflare.settings.json` to fall back to env.
+\* Empty `Api__Key` ⇒ write endpoints return `503` (fail-closed).
 
-### Provisioning Cloudflare (one-time)
+**Provider presets:**
+
+| Provider | `ServiceUrl`                              | `Region`    | `ForcePathStyle` |
+|----------|-------------------------------------------|-------------|------------------|
+| R2       | `https://<acct>.r2.cloudflarestorage.com` | `auto`      | `true`           |
+| AWS S3   | *(empty)*                                 | `us-east-1` | `false`          |
+| MinIO    | `http://minio:9000`                       | `us-east-1` | `true`           |
+
+### 🔄 Runtime-editable config (dashboard)
+
+Env vars are the **bootstrap defaults**. A logged-in admin can view/edit D1 +
+storage config in the dashboard; it persists to `Settings__FilePath` (default
+`App_Data/settings.json`, dir auto-created). Effective config = **persisted file
+merged over env/appsettings** (a persisted field wins only when non-empty).
+`D1Client`/`S3Storage` read it **per operation** → edits apply on the next request
+**with no restart** (S3 client cached, rebuilt only when relevant fields change).
+
+- Settings file may hold secrets → `.gitignore`d (`App_Data/`). Mount a volume to
+  persist dashboard edits; otherwise it falls back to env vars.
+
+**First-run bootstrap (chicken-and-egg):** `POST /api/admin/setup` writes to D1, so
+D1 must be reachable via env defaults **once** to create the admin. After that the
+admin can edit storage (and even D1) creds. If invalid D1 creds are saved, login
+fails until fixed — repair via env vars or delete `App_Data/settings.json` to fall
+back to env.
+
+### Provisioning (one-time)
 
 ```bash
-# install wrangler, then:
-wrangler d1 create tv-video-hub           # → copy the database_id
-wrangler r2 bucket create videos
-wrangler r2 bucket create apks
-# Create an R2 API token (Account → R2 → Manage API tokens) → access key id + secret.
-# Create a D1 API token (My Profile → API Tokens → "D1 Edit") for Cloudflare__D1__ApiToken.
+wrangler d1 create tv-video-hub      # → database_id  (D1 token: My Profile → API Tokens → "D1 Edit")
+# Object storage: create two buckets + S3 access key/secret on your provider
+#   R2:    wrangler r2 bucket create videos && wrangler r2 bucket create apks
+#   AWS:   aws s3 mb s3://videos && aws s3 mb s3://apks
 ```
 
-The app creates the tables itself on first run; no manual migration step.
+Tables are auto-created on first run; no manual migration step.
 
 ## Run locally
 
@@ -159,15 +172,16 @@ dotnet run --project MediaHub.Api
 
 ```bash
 cd backend
-cp .env.example .env   # fill in CF_* and API_KEY
+cp .env.example .env   # fill in CF_*, STORAGE_*, API_KEY
 docker compose up -d --build
 # → http://localhost:8080/api/health
 ```
 
-## Notes on R2 presigning
+## 📝 Notes on S3 presigning
 
-R2 doesn't implement S3's newer flexible-checksum / streaming-trailer features, so
-the client is configured with `RequestChecksumCalculation = WHEN_REQUIRED` and
-uploads use `DisablePayloadSigning = true`. This keeps presigned URLs clean and
-streamable by ExoPlayer. If you swap SDK versions and presigned URLs start failing
-with `SignatureDoesNotMatch`, that setting is the first thing to check.
+- `Storage__UseChecksumWhenRequired=true` → `RequestChecksumCalculation/ResponseChecksumValidation = WHEN_REQUIRED`.
+- `Storage__DisablePayloadSigning=true` → uploads skip streaming SigV4.
+- These defaults keep R2/MinIO presigned URLs clean and ExoPlayer-streamable. Strict
+  AWS setups can flip both off. First thing to check on `SignatureDoesNotMatch`.
+- `ServiceUrl` set → custom endpoint + `AuthenticationRegion`; empty → AWS regional
+  endpoint via `RegionEndpoint.GetBySystemName(Region)`.

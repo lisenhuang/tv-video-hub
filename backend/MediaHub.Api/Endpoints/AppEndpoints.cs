@@ -30,7 +30,7 @@ public static class AppEndpoints
 
         // GET /api/app/download?versionCode=N — 302 to a presigned R2 URL.
         group.MapGet("/download", async (
-            int? versionCode, AppReleaseRepository repo, R2Storage r2, CancellationToken ct) =>
+            int? versionCode, AppReleaseRepository repo, S3Storage r2, CancellationToken ct) =>
         {
             var release = versionCode is { } vc
                 ? await repo.GetByVersionAsync(vc, ct)
@@ -51,7 +51,7 @@ public static class AppEndpoints
     }
 
     private static async Task<IResult> PublishReleaseAsync(
-        HttpContext http, AppReleaseRepository repo, R2Storage r2, CancellationToken ct)
+        HttpContext http, AppReleaseRepository repo, S3Storage r2, CancellationToken ct)
     {
         if (!http.Request.HasFormContentType)
             return Results.BadRequest(new { error = "expected multipart/form-data." });

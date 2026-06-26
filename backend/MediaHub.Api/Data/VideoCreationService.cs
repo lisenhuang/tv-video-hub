@@ -9,7 +9,7 @@ namespace MediaHub.Api.Data;
 /// two stay behaviourally identical. Returns either the created video summary or a
 /// validation error message.
 /// </summary>
-public sealed class VideoCreationService(VideoRepository repo, R2Storage r2)
+public sealed class VideoCreationService(VideoRepository repo, S3Storage storage)
 {
     public sealed record Result(VideoSummaryDto? Video, string? Error)
     {
@@ -34,7 +34,7 @@ public sealed class VideoCreationService(VideoRepository repo, R2Storage r2)
         var key = $"videos/{id}/{SanitizeFileName(file.FileName)}";
 
         await using (var stream = file.OpenReadStream())
-            await r2.PutAsync(r2.VideoBucket, key, stream, mime, ct);
+            await storage.PutAsync(storage.VideoBucket, key, stream, mime, ct);
 
         var uploaded = new Video
         {
@@ -57,7 +57,7 @@ public sealed class VideoCreationService(VideoRepository repo, R2Storage r2)
         if (body is null || string.IsNullOrWhiteSpace(body.ObjectKey) || string.IsNullOrWhiteSpace(body.Title))
             return Result.Fail("title and objectKey are required.");
 
-        if (!await r2.ExistsAsync(r2.VideoBucket, body.ObjectKey, ct))
+        if (!await storage.ExistsAsync(storage.VideoBucket, body.ObjectKey, ct))
             return Result.Fail($"object '{body.ObjectKey}' not found in video bucket.");
 
         var video = new Video
@@ -87,7 +87,7 @@ public sealed class VideoCreationService(VideoRepository repo, R2Storage r2)
         // row so a storage hiccup can't leave a dangling catalog entry.
         try
         {
-            await r2.DeleteAsync(r2.VideoBucket, video.ObjectKey, ct);
+            await storage.DeleteAsync(storage.VideoBucket, video.ObjectKey, ct);
         }
         catch (Amazon.S3.AmazonS3Exception)
         {

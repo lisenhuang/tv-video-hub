@@ -206,6 +206,35 @@ fieldset.mode legend { padding: 0 6px; font-size: 12px; color: var(--muted); }
 }
 .radio input { width: auto; }
 
+/* Grouped settings sections */
+fieldset.group {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px 4px;
+  margin: 0 0 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+fieldset.group legend {
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+
+/* Inline checkbox option */
+.checkbox {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+  font-weight: 500 !important;
+  color: var(--text) !important;
+}
+.checkbox input { width: auto; flex: none; }
+
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
 /* ---- Buttons ------------------------------------------------------------ */

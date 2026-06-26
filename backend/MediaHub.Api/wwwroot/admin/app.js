@@ -353,15 +353,21 @@ function wireSettings() {
   $('settings-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const body = {
+      // Database (Cloudflare D1)
       accountId: $('s-account').value,
       d1DatabaseId: $('s-dbid').value,
       d1ApiToken: $('s-token').value, // blank => unchanged (server-side)
-      r2AccessKeyId: $('s-akid').value,
-      r2SecretAccessKey: $('s-secret').value,
-      r2VideoBucket: $('s-vbucket').value,
-      r2ApkBucket: $('s-abucket').value,
-      r2ServiceUrl: $('s-serviceurl').value,
-      r2PresignTtlMinutes: $('s-ttl').value ? Number($('s-ttl').value) : null,
+      // Object storage (S3-compatible)
+      storageServiceUrl: $('s-serviceurl').value,
+      storageRegion: $('s-region').value,
+      storageAccessKeyId: $('s-akid').value, // blank => unchanged
+      storageSecretAccessKey: $('s-secret').value, // blank => unchanged
+      storageVideoBucket: $('s-vbucket').value,
+      storageApkBucket: $('s-abucket').value,
+      storageForcePathStyle: $('s-forcepath').checked,
+      storagePresignTtlMinutes: $('s-ttl').value ? Number($('s-ttl').value) : null,
+      storageDisablePayloadSigning: $('s-disablesign').checked,
+      storageUseChecksumWhenRequired: $('s-checksum').checked,
     };
     const { res, data } = await apiJson('/api/admin/settings', 'PUT', body);
     if (res.ok) {
@@ -384,8 +390,8 @@ function wireSettings() {
       const { res, data } = await apiJson('/api/admin/settings/test', 'POST');
       if (res.status === 401) { await refreshState(); return; }
       out.innerHTML = '';
-      out.appendChild(testLine('D1', data.d1));
-      out.appendChild(testLine('R2', data.r2));
+      out.appendChild(testLine('Database (D1)', data.d1));
+      out.appendChild(testLine('Object storage', data.storage));
     } catch (_) {
       out.innerHTML = '<div class="banner error">Test request failed.</div>';
     } finally {
@@ -414,19 +420,25 @@ async function loadSettings() {
 
 function fillSettings(s) {
   if (!s) return;
+  // Database (Cloudflare D1)
   $('s-account').value = s.accountId || '';
   $('s-dbid').value = s.d1DatabaseId || '';
-  $('s-vbucket').value = s.r2VideoBucket || '';
-  $('s-abucket').value = s.r2ApkBucket || '';
-  $('s-serviceurl').value = s.r2ServiceUrl || '';
-  $('s-ttl').value = s.r2PresignTtlMinutes || '';
+  // Object storage (S3-compatible)
+  $('s-serviceurl').value = s.storageServiceUrl || '';
+  $('s-region').value = s.storageRegion || '';
+  $('s-vbucket').value = s.storageVideoBucket || '';
+  $('s-abucket').value = s.storageApkBucket || '';
+  $('s-ttl').value = s.storagePresignTtlMinutes || '';
+  $('s-forcepath').checked = !!s.storageForcePathStyle;
+  $('s-disablesign').checked = !!s.storageDisablePayloadSigning;
+  $('s-checksum').checked = !!s.storageUseChecksumWhenRequired;
   // Secrets: never populated; show a hint about the stored value, keep field blank.
   $('s-token').value = '';
   $('s-akid').value = '';
   $('s-secret').value = '';
   $('s-token-hint').textContent = secretHint(s.d1ApiToken);
-  $('s-akid-hint').textContent = secretHint(s.r2AccessKeyId);
-  $('s-secret-hint').textContent = secretHint(s.r2SecretAccessKey);
+  $('s-akid-hint').textContent = secretHint(s.storageAccessKeyId);
+  $('s-secret-hint').textContent = secretHint(s.storageSecretAccessKey);
 }
 
 function secretHint(masked) {

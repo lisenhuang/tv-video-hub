@@ -22,7 +22,7 @@ public static class VideoEndpoints
 
         // GET /api/videos/{id} — details + presigned playback URL.
         group.MapGet("/{id}", async (
-            string id, VideoRepository repo, R2Storage r2, CancellationToken ct) =>
+            string id, VideoRepository repo, S3Storage r2, CancellationToken ct) =>
         {
             var v = await repo.GetAsync(id, ct);
             if (v is null) return Results.NotFound();

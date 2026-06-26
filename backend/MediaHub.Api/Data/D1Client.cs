@@ -13,8 +13,8 @@ namespace MediaHub.Api.Data;
 /// and positional params.
 ///
 /// The Cloudflare credentials are resolved per request from
-/// <see cref="CloudflareSettingsProvider"/> rather than captured once in the
-/// constructor, so dashboard edits take effect without a restart. The injected
+/// <see cref="SettingsProvider"/> rather than captured once in the constructor,
+/// so dashboard edits take effect without a restart. The injected
 /// <see cref="HttpClient"/> is used without a fixed BaseAddress: each request
 /// targets an absolute URI built from the current settings.
 /// </summary>
@@ -23,10 +23,10 @@ public sealed class D1Client
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly HttpClient _http;
-    private readonly CloudflareSettingsProvider _settings;
+    private readonly SettingsProvider _settings;
     private readonly ILogger<D1Client> _log;
 
-    public D1Client(HttpClient http, CloudflareSettingsProvider settings, ILogger<D1Client> log)
+    public D1Client(HttpClient http, SettingsProvider settings, ILogger<D1Client> log)
     {
         _http = http;
         _settings = settings;
@@ -50,7 +50,7 @@ public sealed class D1Client
     public async Task<IReadOnlyList<D1Row>> QueryAsync(
         string sql, IReadOnlyList<object?>? parameters = null, CancellationToken ct = default)
     {
-        var cf = _settings.Current;
+        var cf = _settings.Cloudflare;
         var payload = new D1QueryRequest(sql, NormalizeParams(parameters));
 
         using var request = BuildRequest(cf, payload);
@@ -74,7 +74,7 @@ public sealed class D1Client
     public async Task<long> ExecuteAsync(
         string sql, IReadOnlyList<object?>? parameters = null, CancellationToken ct = default)
     {
-        var cf = _settings.Current;
+        var cf = _settings.Cloudflare;
         var payload = new D1QueryRequest(sql, NormalizeParams(parameters));
 
         using var request = BuildRequest(cf, payload);

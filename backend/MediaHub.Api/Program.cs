@@ -15,6 +15,8 @@ builder.Services.Configure<CloudflareOptions>(
     builder.Configuration.GetSection(CloudflareOptions.SectionName));
 builder.Services.Configure<ApiOptions>(
     builder.Configuration.GetSection(ApiOptions.SectionName));
+builder.Services.Configure<StorageOptions>(
+    builder.Configuration.GetSection(StorageOptions.SectionName));
 builder.Services.Configure<SettingsOptions>(
     builder.Configuration.GetSection(SettingsOptions.SectionName));
 
@@ -26,11 +28,12 @@ builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
 });
 
-// ---- Runtime-editable Cloudflare settings -------------------------------
-// SettingsStore persists dashboard edits to a JSON file; the provider merges them
-// over the env/appsettings defaults and is the live source read by D1Client/R2Storage.
+// ---- Runtime-editable settings (Cloudflare D1 + S3 object storage) ------
+// SettingsStore persists dashboard edits to a JSON file; SettingsProvider merges
+// them over the env/appsettings defaults and is the live source read per-operation
+// by D1Client (Cloudflare D1) and S3Storage (S3-compatible object storage).
 builder.Services.AddSingleton<SettingsStore>();
-builder.Services.AddSingleton<CloudflareSettingsProvider>();
+builder.Services.AddSingleton<SettingsProvider>();
 
 // ---- Data + storage ------------------------------------------------------
 builder.Services.AddHttpClient<D1Client>();
@@ -38,7 +41,7 @@ builder.Services.AddScoped<VideoRepository>();
 builder.Services.AddScoped<AppReleaseRepository>();
 builder.Services.AddScoped<AdminRepository>();
 builder.Services.AddScoped<VideoCreationService>();
-builder.Services.AddSingleton<R2Storage>();
+builder.Services.AddSingleton<S3Storage>();
 builder.Services.AddSingleton<PasswordHasher>();
 builder.Services.AddScoped<DatabaseInitializer>();
 builder.Services.AddScoped<ApiKeyFilter>();
