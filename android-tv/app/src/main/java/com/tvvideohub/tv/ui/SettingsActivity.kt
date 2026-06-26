@@ -2,6 +2,7 @@
 
 package com.tvvideohub.tv.ui
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -115,6 +116,17 @@ private fun SettingsScreen(onBack: () -> Unit) {
                         Text((if (selected) "● " else "") + mode.label())
                     }
                 }
+            }
+
+            // --- Storage ---
+            Text(
+                "Storage",
+                style = MaterialTheme.typography.titleMedium,
+                color = colors.onBackground,
+                modifier = Modifier.padding(top = 28.dp, bottom = 8.dp)
+            )
+            Button(onClick = { context.startActivity(Intent(context, StorageActivity::class.java)) }) {
+                Text("Manage storage & cache")
             }
 
             Button(onClick = onBack, modifier = Modifier.padding(top = 32.dp)) { Text("Back") }

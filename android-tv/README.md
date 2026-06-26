@@ -28,6 +28,7 @@ launch ─▶ base URL set? ──no─▶ 🧩 Setup screen
 | 🔄 **Self-update** | checks `/api/app/latest`, downloads APK, verifies SHA-256, installs |
 | 🧩 **Runtime base URL** | set on first run, changeable in Settings (🔒 math-gated) |
 | 🎨 **Themes** | light/dark, follows system by default + manual toggle |
+| 🧹 **Storage manager** | Settings → Storage: total cache size + device space, delete cached/downloaded videos, clear cache |
 
 ## ⚙️ Backend URL
 

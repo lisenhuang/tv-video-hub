@@ -67,6 +67,10 @@
             android:name=".ui.SettingsActivity"
             android:exported="false"
             android:theme="@style/Theme.TvVideoHub" />
+        <activity
+            android:name=".ui.StorageActivity"
+            android:exported="false"
+            android:theme="@style/Theme.TvVideoHub" />
 
         <!-- Foreground service that runs offline downloads (Media3 DownloadManager).
              The RESTART intent lets it resume downloads after the process is recreated. -->

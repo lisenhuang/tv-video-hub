@@ -122,6 +122,35 @@ object DownloadUtil {
     fun isDownloaded(context: Context, videoId: String): Boolean =
         getDownload(context, videoId)?.state == Download.STATE_COMPLETED
 
+    // ---- Cache size / cleanup (for the Storage screen) ---------------------
+
+    /** Total bytes currently held in the shared media cache (streamed + downloaded). */
+    fun cacheUsedBytes(context: Context): Long =
+        runCatching { getCache(context).cacheSpace }.getOrDefault(0L)
+
+    /** Cache keys = stable video ids that have any cached bytes. */
+    fun cachedKeys(context: Context): Set<String> =
+        runCatching { getCache(context).keys }.getOrDefault(emptySet())
+
+    /** Bytes cached for a single video id. */
+    fun cachedBytesFor(context: Context, key: String): Long =
+        runCatching { getCache(context).getCachedBytes(key, 0, Long.MAX_VALUE) }.getOrDefault(0L)
+
+    /**
+     * Evict a purely-streamed (non-download) item from the cache. For a completed download
+     * use [Downloads.remove] instead so the download index stays consistent.
+     */
+    fun removeFromCache(context: Context, key: String) {
+        runCatching {
+            val cache = getCache(context)
+            // Iterate spans (guaranteed Cache API) and drop each; unlocked streamed spans
+            // delete cleanly. Download spans are locked, so callers route those via Downloads.
+            for (span in cache.getCachedSpans(key)) {
+                runCatching { cache.removeSpan(span) }
+            }
+        }
+    }
+
     /** All downloads (completed + in-progress), newest first — usable offline. */
     fun listDownloads(context: Context): List<Download> {
         val result = mutableListOf<Download>()
