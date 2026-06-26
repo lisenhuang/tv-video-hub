@@ -4,8 +4,11 @@ ASP.NET Core minimal API that serves the video catalog to the Android TV app,
 generates short-lived streaming URLs, and hosts APK builds for self-update.
 
 - 🚀 **Zero-env setup.** Boots with **no environment variables and no config**, then is
-  configured entirely in the **`/admin`** dashboard. Everything (admin account, database,
-  storage, release key) persists to a local file (`App_Data/settings.json`).
+  configured in the **`/admin`** dashboard.
+- 💾 **Only the DB connection is on disk** (`App_Data/db.json`). The **admin account,
+  object-storage config, and release API key all live IN THE DATABASE** (tables
+  `admins`, `app_config`) — so a fresh container with the same DB connection has
+  everything.
 - 🗄️ **Pluggable database.** Cloudflare **D1** (HTTP API) **or** a self-hosted SQL DB
   via EF Core: **SQLite / PostgreSQL / SQL Server** (MySQL selectable — see note below).
   Schema auto-created (D1 `CREATE TABLE IF NOT EXISTS`; EF `EnsureCreated()`), additive.
@@ -14,30 +17,37 @@ generates short-lived streaming URLs, and hosts APK builds for self-update.
 
 See the [repo root README](../README.md) for the full HTTP/JSON contract.
 
+### What's stored where
+
+| Lives on local disk (`App_Data/db.json`) | Lives in the database |
+|------------------------------------------|-----------------------|
+| Database connection: provider + D1 creds **or** connection string | `admins` (PBKDF2), `app_config` (storage config + release API key), `videos`, `app_releases` |
+
 ## Project layout
 
 ```
 MediaHub.Api/
 ├── Program.cs               composition root, DI, JSON, auth, lazy schema init
-├── Options/                 CloudflareOptions (D1 seed), StorageOptions, DatabaseOptions, ApiOptions, SettingsOptions
+├── Options/                 CloudflareOptions (D1 seed), DatabaseOptions, SettingsOptions
 ├── Data/
 │   ├── D1Client.cs          HTTP client for the D1 query API (parameterized SQL)
-│   ├── IRepositories.cs     IVideoRepository / IAppReleaseRepository / ISchemaInitializer
-│   ├── DatabaseService.cs   resolves the impl for the configured provider (+ lazy schema)
+│   ├── IRepositories.cs     IVideo/IAppRelease/IAdmin/IAppConfigRepository, ISchemaInitializer
+│   ├── DatabaseService.cs   resolves the impl for the configured provider (+ CanConnect/lazy schema)
 │   ├── RepositoryFacades.cs VideoRepository / AppReleaseRepository (ensure schema → delegate)
-│   ├── AdminRepository.cs   single admin, stored LOCALLY (no DB needed to log in)
+│   ├── AdminRepository.cs   DB-backed admin facade
 │   ├── VideoCreationService.cs   shared create/delete logic (public + admin)
-│   ├── D1/                  D1VideoRepository, D1AppReleaseRepository, D1SchemaInitializer
-│   └── Ef/                  MediaHubDbContext, EfContextFactory, Ef{Video,AppRelease}Repository, EfSchemaInitializer
-├── Settings/                local-file config (single source of bootstrap truth, live-reloaded)
-│   ├── PersistedSettings.cs        Admin + Database + Storage + Api
-│   ├── SettingsStore.cs            read/write the JSON file
+│   ├── D1/                  D1{Video,AppRelease,Admin,AppConfig}Repository, D1SchemaInitializer
+│   └── Ef/                  MediaHubDbContext, EfContextFactory, Ef{Video,AppRelease,Admin,AppConfig}Repository, EfSchemaInitializer
+├── Settings/
+│   ├── DatabaseFileConfig.cs       the ONLY on-disk config shape (DB connection)
+│   ├── DbConfigStore.cs            read/write App_Data/db.json
+│   ├── SettingsProvider.cs         singleton; live DB-connection config (file + env seed)
+│   ├── AppConfigProvider.cs        singleton; storage + api-key read FROM THE DB (cached)
 │   ├── EffectiveDatabaseConfig.cs  resolved DB snapshot (provider + creds)
-│   ├── EffectiveStorageConfig.cs   resolved S3 storage snapshot
-│   └── SettingsProvider.cs         singleton; live source for D1Client/EF/S3Storage/ApiKey
-├── Storage/S3Storage.cs     presigned GET URLs + upload/delete/exists against any S3 store
+│   └── EffectiveStorageConfig.cs   resolved S3 storage snapshot
+├── Storage/S3Storage.cs     presigned GET URLs + upload/delete/exists (config from the DB)
 ├── Auth/
-│   ├── ApiKeyFilter.cs      X-Api-Key guard (key read live from settings)
+│   ├── ApiKeyFilter.cs      X-Api-Key guard (key read live from the DB)
 │   └── PasswordHasher.cs    PBKDF2/SHA-256 (framework crypto, no packages)
 ├── Endpoints/
 │   ├── VideoEndpoints.cs    GET /api/videos, GET /api/videos/{id}, POST /api/videos
@@ -64,16 +74,18 @@ MediaHub.Api/
 
 Vanilla HTML/CSS/JS under `wwwroot/admin/` (light/dark theme). **Cookie auth** — an
 *additional* path that doesn't affect public endpoints or the `X-Api-Key` write path.
-First-run wizard: **(1)** create the single admin (stored locally, no DB needed) →
-**(2)** configure database + object storage + release key → **(3)** manage videos.
-Single-admin: after the first admin exists, setup is permanently closed.
+First-run wizard, **strict order**: **(1)** connect a **database** → **(2)** create the
+single **admin** (in the DB) → **(3)** configure **object storage + release key** (in
+the DB) → manage videos. Single-admin: after the first admin exists, setup is closed.
 
 | Method | Route                          | Auth     | Purpose                                   |
 |--------|--------------------------------|----------|-------------------------------------------|
 | GET    | `/admin`                       | —        | serves the dashboard SPA                  |
-| GET    | `/api/admin/setup-state`       | —        | `{ needsAdmin, authenticated, needsDatabase, needsStorage }` (`needsSetup` kept as alias) |
-| POST   | `/api/admin/setup`             | —¹       | create the first admin + sign in (409 if one exists) |
-| POST   | `/api/admin/login`             | —        | sign in (cookie); 401 on bad creds        |
+| GET    | `/api/admin/setup-state`       | —        | `{ needsDatabase, needsAdmin, needsStorage, authenticated }` (`needsSetup` = needsAdmin alias) |
+| GET    | `/api/admin/db-config`         | —²       | bootstrap: current DB connection (masked) |
+| PUT    | `/api/admin/db-config`         | —²       | bootstrap: save DB connection + report `connects` |
+| POST   | `/api/admin/setup`             | —¹       | create the first admin (in DB) + sign in  |
+| POST   | `/api/admin/login`             | —        | sign in (cookie); needs the DB up; 401 on bad creds |
 | POST   | `/api/admin/logout`            | cookie   | sign out                                  |
 | GET    | `/api/admin/me`                | cookie   | `{ username }`                            |
 | POST   | `/api/admin/change-password`   | cookie   | change the existing admin's password      |
@@ -82,20 +94,22 @@ Single-admin: after the first admin exists, setup is permanently closed.
 | DELETE | `/api/admin/videos/{id}`       | cookie   | delete the DB row **and** the storage object |
 | GET    | `/api/admin/releases`          | cookie   | list app releases (read-only)             |
 | GET    | `/api/admin/settings`          | cookie   | effective DB + storage + key config, **secrets masked** |
-| PUT    | `/api/admin/settings`          | cookie   | edit config (blank secret = keep current) |
+| PUT    | `/api/admin/settings`          | cookie   | edit config (DB→file; storage/key→DB; blank secret = keep) |
 | POST   | `/api/admin/settings/test`     | cookie   | probe DB (schema + read) + storage (list) |
 
-¹ `setup` is public but only succeeds while there is **no** admin.
+¹ `setup` is public but only succeeds while the DB connects and there is **no** admin.
+² `db-config` is public only **while no admin exists** (bootstrap); afterwards use the
+   authed `/settings`.
 
 The dashboard never receives full secrets — settings return only `{ isSet, last4 }`
 per secret. Saving a blank secret field leaves the stored value unchanged.
 
 ## ⚙️ Configuration
 
-**You don't have to set anything** — boot the app and configure it at `/admin`. The
-local file `App_Data/settings.json` is the source of truth. Env vars/appsettings are
-**OPTIONAL seeds**: a persisted (dashboard) value always wins over a non-empty seed.
-All config is live-reloaded (read per operation; no restart).
+**You don't have to set anything** — boot the app and configure it at `/admin`. Only the
+**database connection** is on disk (`App_Data/db.json`); the admin account, storage
+config, and release key live **in the database**. Env vars can OPTIONALLY seed the DB
+connection (a dashboard value wins). All config is live-reloaded (no restart).
 
 **🗄️ Database — pluggable (`Database__*` + D1 fields from `Cloudflare__*`)**
 
@@ -113,55 +127,51 @@ All config is live-reloaded (read per operation; no restart).
 - SQLite connection example: `Data Source=App_Data/mediahub.db` (persisted with the
   `App_Data` volume).
 
-**📦 Object storage — S3-compatible (`Storage__*`)**
-
-| variable                          | notes                                            |
-|-----------------------------------|--------------------------------------------------|
-| `Storage__ServiceUrl`             | S3 endpoint; **empty = AWS regional endpoint**   |
-| `Storage__Region`                 | `auto` (R2) · `us-east-1` (AWS) · region (MinIO) |
-| `Storage__AccessKeyId` / `Storage__SecretAccessKey` | S3 credentials                 |
-| `Storage__VideoBucket` / `Storage__ApkBucket` | default `videos` / `apks`            |
-| `Storage__ForcePathStyle`         | default `true` (R2/MinIO); AWS virtual-hosted → `false` |
-| `Storage__PresignTtlMinutes`      | default `360`                                    |
-| `Storage__DisablePayloadSigning`  | default `true` (R2 needs it)                     |
-| `Storage__UseChecksumWhenRequired`| default `true` (clean R2 presigns)               |
-
-**Other**
-
 | variable             | notes                                                   |
 |----------------------|---------------------------------------------------------|
-| `Api__Key`           | release `X-Api-Key` secret (writes `503` until set)     |
-| `Settings__FilePath` | local settings file; default `App_Data/settings.json`   |
+| `Settings__FilePath` | on-disk DB-config file; default `App_Data/db.json`      |
 
-**Storage provider presets:**
+**📦 Object storage + 🔑 release API key — configured at `/admin` (stored in the DB).**
+Not env vars. Provider presets (set them in the dashboard's Storage form):
 
-| Provider | `ServiceUrl`                              | `Region`    | `ForcePathStyle` |
+| Provider | Service URL                               | Region      | Force path-style |
 |----------|-------------------------------------------|-------------|------------------|
-| R2       | `https://<acct>.r2.cloudflarestorage.com` | `auto`      | `true`           |
-| AWS S3   | *(empty)*                                 | `us-east-1` | `false`          |
-| MinIO    | `http://minio:9000`                       | `us-east-1` | `true`           |
+| R2       | `https://<acct>.r2.cloudflarestorage.com` | `auto`      | on               |
+| AWS S3   | *(empty)*                                 | `us-east-1` | off              |
+| MinIO    | `http://minio:9000`                       | `us-east-1` | on               |
 
-### 🔄 How provider switching + schema init work
+R2-safe defaults (toggleable in the form): force-path-style **on**, disable upload
+payload-signing **on**, checksums **only when required** — these keep R2/MinIO presigned
+URLs clean and ExoPlayer-streamable; strict AWS setups can flip them. With `ServiceUrl`
+set the SDK uses that endpoint + `AuthenticationRegion`; empty → AWS regional endpoint
+via `RegionEndpoint.GetBySystemName(Region)`.
 
-- `SettingsProvider` exposes the **effective** Database/Storage/ApiKey, live.
+### 🔄 How config + provider switching + schema init work
+
+- **DB connection** comes from `App_Data/db.json` (or an env seed) via `SettingsProvider`.
+- **Storage + release key** come from the **`app_config`** table via `AppConfigProvider`
+  (a singleton that reads the DB through a scope, caches a snapshot, and reloads on save).
+  `S3Storage` / `ApiKeyFilter` read it per request → dashboard edits apply with no restart.
 - `DatabaseService` (scoped) picks the impl for the **current** provider:
-  D1 → `D1*Repository` (HTTP); SQL → `Ef*Repository` over `EfContextFactory` (which
-  caches `DbContextOptions` per provider+connection, rebuilt on change).
+  D1 → `D1*Repository` (HTTP); SQL → `Ef*Repository` over `EfContextFactory` (caches
+  `DbContextOptions` per provider+connection, rebuilt on change).
 - Schema is ensured **lazily** on first use (and at startup if already configured):
-  D1 `CREATE TABLE IF NOT EXISTS`; EF `EnsureCreated()` — additive, never destructive.
-  Until the DB is configured, catalog endpoints return a clean **503** (not a crash).
+  D1 `CREATE TABLE IF NOT EXISTS` (`videos`, `app_releases`, `admins`, `app_config`);
+  EF `EnsureCreated()` — additive, never destructive. Until the DB connects, catalog +
+  storage endpoints return a clean **503** (not a crash).
 
-### First-run (no chicken-and-egg)
+### First-run order (DB first)
 
-The admin lives in the **local file**, so the very first run needs **no database**.
-Create the admin at `/admin`, then configure DB + storage + release key — all in the UI.
+The admin now lives in the **database**, so step 1 is **connect a database**
+(`/admin` shows a DB form + Test). Then create the admin (in the DB), then configure
+storage + release key (in the DB). Login requires the DB to be up.
 
 ## Run locally
 
 ```bash
 cd backend
 dotnet run --project MediaHub.Api      # zero config needed
-# → http://localhost:5080/api/health, then open /admin to set everything up
+# → http://localhost:5080/api/health, then open /admin (step 1: connect a database)
 ```
 
 ## Run in Docker
@@ -172,11 +182,7 @@ docker compose up -d --build           # no .env required; App_Data is a named v
 # → http://localhost:8080/api/health, then open http://localhost:8080/admin
 ```
 
-## 📝 Notes on S3 presigning
-
-- `Storage__UseChecksumWhenRequired=true` → `RequestChecksumCalculation/ResponseChecksumValidation = WHEN_REQUIRED`.
-- `Storage__DisablePayloadSigning=true` → uploads skip streaming SigV4.
-- These defaults keep R2/MinIO presigned URLs clean and ExoPlayer-streamable. Strict
-  AWS setups can flip both off. First thing to check on `SignatureDoesNotMatch`.
-- `ServiceUrl` set → custom endpoint + `AuthenticationRegion`; empty → AWS regional
-  endpoint via `RegionEndpoint.GetBySystemName(Region)`.
+> 💾 **Stateless upgrades:** only `App_Data/db.json` is on disk. Persist the `App_Data`
+> volume (compose already does) **or** seed the DB connection via env, and a brand-new
+> image/container reuses the same database — and therefore the same admin, storage, and
+> all data, which live in the DB.

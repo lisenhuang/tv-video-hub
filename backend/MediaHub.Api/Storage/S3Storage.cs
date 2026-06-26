@@ -10,10 +10,11 @@ namespace MediaHub.Api.Storage;
 /// Provider-agnostic wrapper over the AWS S3 client, pointed at any S3-compatible
 /// object store: Cloudflare R2, AWS S3, MinIO, Backblaze B2, etc.
 ///
-/// Config (endpoint, region, keys, behavior toggles) is resolved per operation
-/// from <see cref="SettingsProvider"/>, so dashboard edits take effect without a
-/// restart. The underlying <c>AmazonS3Client</c> is cached and only rebuilt when a
-/// relevant setting changes (compared via <see cref="EffectiveStorageConfig.ClientSignature"/>).
+/// Config (endpoint, region, keys, behavior toggles, buckets) now lives IN THE DATABASE
+/// and is read per operation from <see cref="AppConfigProvider"/> (cached; reloaded on
+/// dashboard save), so edits take effect without a restart. The underlying
+/// <c>AmazonS3Client</c> is cached and rebuilt only when a relevant setting changes
+/// (compared via <see cref="EffectiveStorageConfig.ClientSignature"/>).
 ///
 /// Client construction:
 /// <list type="bullet">
@@ -22,14 +23,22 @@ namespace MediaHub.Api.Storage;
 /// <item>If <c>ServiceUrl</c> is empty → <c>RegionEndpoint.GetBySystemName(Region)</c>
 ///   so the SDK targets real AWS S3 (with <c>ForcePathStyle</c> still honored).</item>
 /// </list>
-/// Checksum behavior and upload payload-signing are driven by the config toggles;
-/// the defaults keep an R2 setup working with no extra configuration.
 /// </summary>
-public sealed class S3Storage(SettingsProvider settings)
+public sealed class S3Storage(AppConfigProvider appConfig)
 {
     private readonly object _gate = new();
     private IAmazonS3? _s3;
     private string? _builtSignature;
+
+    private Task<EffectiveStorageConfig> ConfigAsync(CancellationToken ct) => appConfig.GetStorageAsync(ct);
+
+    /// <summary>The configured video bucket name.</summary>
+    public async Task<string> GetVideoBucketAsync(CancellationToken ct = default) =>
+        (await ConfigAsync(ct)).VideoBucket;
+
+    /// <summary>The configured apk bucket name.</summary>
+    public async Task<string> GetApkBucketAsync(CancellationToken ct = default) =>
+        (await ConfigAsync(ct)).ApkBucket;
 
     /// <summary>Get (or lazily rebuild) the S3 client for the current settings.</summary>
     private IAmazonS3 Client(EffectiveStorageConfig cfg)
@@ -76,15 +85,12 @@ public sealed class S3Storage(SettingsProvider settings)
         }
     }
 
-    public string VideoBucket => settings.Storage.VideoBucket;
-    public string ApkBucket => settings.Storage.ApkBucket;
-    public TimeSpan PresignTtl => TimeSpan.FromMinutes(settings.Storage.PresignTtlMinutes);
-
     /// <summary>Generate a short-lived presigned GET URL for streaming/download.</summary>
-    public (string Url, DateTimeOffset ExpiresAt) GetPresignedGetUrl(
-        string bucket, string key, TimeSpan? ttl = null, string? responseContentType = null)
+    public async Task<(string Url, DateTimeOffset ExpiresAt)> GetPresignedGetUrlAsync(
+        string bucket, string key, TimeSpan? ttl = null, string? responseContentType = null,
+        CancellationToken ct = default)
     {
-        var cfg = settings.Storage;
+        var cfg = await ConfigAsync(ct);
         var s3 = Client(cfg);
 
         var lifetime = ttl ?? TimeSpan.FromMinutes(cfg.PresignTtlMinutes);
@@ -107,7 +113,7 @@ public sealed class S3Storage(SettingsProvider settings)
     public async Task PutAsync(
         string bucket, string key, Stream content, string contentType, CancellationToken ct = default)
     {
-        var cfg = settings.Storage;
+        var cfg = await ConfigAsync(ct);
         var s3 = Client(cfg);
         var request = new PutObjectRequest
         {
@@ -124,7 +130,7 @@ public sealed class S3Storage(SettingsProvider settings)
 
     public async Task<bool> ExistsAsync(string bucket, string key, CancellationToken ct = default)
     {
-        var s3 = Client(settings.Storage);
+        var s3 = Client(await ConfigAsync(ct));
         try
         {
             await s3.GetObjectMetadataAsync(bucket, key, ct);
@@ -139,7 +145,7 @@ public sealed class S3Storage(SettingsProvider settings)
     /// <summary>Delete an object.</summary>
     public async Task DeleteAsync(string bucket, string key, CancellationToken ct = default)
     {
-        var s3 = Client(settings.Storage);
+        var s3 = Client(await ConfigAsync(ct));
         await s3.DeleteObjectAsync(bucket, key, ct);
     }
 
@@ -149,7 +155,7 @@ public sealed class S3Storage(SettingsProvider settings)
     /// </summary>
     public async Task ProbeAsync(string bucket, CancellationToken ct = default)
     {
-        var s3 = Client(settings.Storage);
+        var s3 = Client(await ConfigAsync(ct));
         await s3.ListObjectsV2Async(
             new ListObjectsV2Request { BucketName = bucket, MaxKeys = 1 }, ct);
     }

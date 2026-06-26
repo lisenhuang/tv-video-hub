@@ -95,6 +95,7 @@ function fmtBytes(n) {
 
 // ---- App state -------------------------------------------------------------
 const views = {
+  dbsetup: 'db-setup-view',
   setup: 'setup-view',
   login: 'login-view',
   dash: 'dash-view',
@@ -108,6 +109,7 @@ function showView(name) {
 async function init() {
   $('theme-toggle').addEventListener('click', cycleTheme);
   $('logout-btn').addEventListener('click', doLogout);
+  wireDbSetup();
   wireSetup();
   wireLogin();
   wireTabs();
@@ -125,8 +127,12 @@ async function refreshState() {
     const { res, data } = await apiJson('/api/admin/setup-state', 'GET');
     if (!res.ok) throw new Error('Could not reach the server.');
     lastSetupState = data;
-    // needsAdmin (with needsSetup kept as a back-compat alias).
-    if (data.needsAdmin || data.needsSetup) {
+    // Strict wizard order: database → admin → (login) → dashboard.
+    if (data.needsDatabase) {
+      setAuthedChrome(false);
+      await loadDbSetup();
+      showView('dbsetup');
+    } else if (data.needsAdmin || data.needsSetup) {
       setAuthedChrome(false);
       showView('setup');
     } else if (data.authenticated) {
@@ -147,6 +153,65 @@ function setAuthedChrome(authed, username) {
   const who = $('who');
   if (authed && username) { who.textContent = username; show(who, true); }
   else show(who, false);
+}
+
+// ---- Step 1: Database setup (bootstrap) ------------------------------------
+const DB_CONN_HELP = {
+  sqlite: 'e.g. Data Source=App_Data/mediahub.db',
+  postgres: 'e.g. Host=localhost;Database=mediahub;Username=postgres;Password=…',
+  mysql: 'e.g. Server=localhost;Database=mediahub;User=root;Password=… (provider not bundled — see README)',
+  sqlserver: 'e.g. Server=localhost;Database=mediahub;User Id=sa;Password=…;TrustServerCertificate=true',
+};
+
+function applyDbSetupProvider() {
+  const p = $('db-provider').value;
+  show($('db-d1'), p === 'd1');
+  show($('db-sql'), p === 'sqlite' || p === 'postgres' || p === 'mysql' || p === 'sqlserver');
+  $('db-conn-help').textContent = DB_CONN_HELP[p] || '';
+}
+
+async function loadDbSetup() {
+  const { res, data } = await apiJson('/api/admin/db-config', 'GET');
+  if (res.ok && data) {
+    $('db-provider').value = data.databaseProvider || '';
+    $('db-account').value = data.accountId || '';
+    $('db-dbid').value = data.d1DatabaseId || '';
+    $('db-token-hint').textContent = secretHint(data.d1ApiToken);
+    $('db-conn-hint').textContent = secretHint(data.databaseConnectionString);
+  }
+  applyDbSetupProvider();
+}
+
+function wireDbSetup() {
+  $('db-provider').addEventListener('change', applyDbSetupProvider);
+  $('db-setup-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const provider = $('db-provider').value;
+    if (!provider) { banner('Choose a database provider.', 'error'); return; }
+    const body = {
+      databaseProvider: provider,
+      accountId: $('db-account').value,
+      d1DatabaseId: $('db-dbid').value,
+      d1ApiToken: $('db-token').value,
+      databaseConnectionString: $('db-conn').value,
+    };
+    const { res, data } = await apiJson('/api/admin/db-config', 'PUT', body);
+    const out = $('db-setup-result');
+    out.hidden = false;
+    if (!res.ok) {
+      out.innerHTML = '';
+      out.appendChild(testLine('Database', { ok: false, message: (data && data.error) || 'save failed' }));
+      return;
+    }
+    if (data.connects) {
+      banner('');
+      // DB connects — advance to the next required step.
+      await refreshState();
+    } else {
+      out.innerHTML = '';
+      out.appendChild(testLine('Database', { ok: false, message: 'Saved, but could not connect. Check the values.' }));
+    }
+  });
 }
 
 // ---- Setup -----------------------------------------------------------------

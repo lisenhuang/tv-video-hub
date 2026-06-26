@@ -1,13 +1,12 @@
 namespace MediaHub.Api.Options;
 
 /// <summary>
-/// Cloudflare credentials and resource ids for <b>Cloudflare D1</b> (the database).
+/// OPTIONAL env/appsettings seed for <b>Cloudflare D1</b> credentials (the database).
 /// Bound from the "Cloudflare" config section (env vars use the double-underscore
 /// convention, e.g. <c>Cloudflare__D1__ApiToken</c>). Never commit real values.
 ///
-/// Object storage is configured separately and provider-agnostically via
-/// <see cref="StorageOptions"/> (the "Storage" section) — D1 is the only
-/// Cloudflare-specific dependency.
+/// Object storage and the release API key are NOT here — they live in the database
+/// and are configured via the dashboard. Only the database connection can be seeded.
 /// </summary>
 public sealed class CloudflareOptions
 {

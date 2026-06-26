@@ -3,8 +3,8 @@ namespace MediaHub.Api.Data.D1;
 /// <summary>
 /// Creates the D1 schema if it isn't there yet. Uses <c>CREATE TABLE IF NOT EXISTS</c>
 /// so it is safe to run repeatedly and against an existing database — additive only,
-/// never destructive. The admin account is stored locally (not in the DB), so there
-/// is no <c>admins</c> table here.
+/// never destructive. Admin accounts and runtime config (storage + release key) live
+/// in the DB too (<c>admins</c>, <c>app_config</c>).
 /// </summary>
 public sealed class D1SchemaInitializer(D1Client d1, ILogger<D1SchemaInitializer> log) : ISchemaInitializer
 {
@@ -33,6 +33,21 @@ public sealed class D1SchemaInitializer(D1Client d1, ILogger<D1SchemaInitializer
             sha256        TEXT NOT NULL DEFAULT '',
             min_sdk       INTEGER NOT NULL DEFAULT 23,
             published_at  TEXT NOT NULL
+        );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS admins (
+            id            TEXT PRIMARY KEY,
+            username      TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            password_salt TEXT NOT NULL,
+            created_at    TEXT NOT NULL
+        );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS app_config (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL DEFAULT ''
         );
         """,
     ];

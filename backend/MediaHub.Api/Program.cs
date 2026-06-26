@@ -11,13 +11,11 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ---- Options (OPTIONAL env/appsettings seeds; the local file is authoritative) --
+// ---- Options (OPTIONAL env/appsettings seeds for the DB connection only) --------
+// Only the database connection can be seeded from env; admin/storage/api-key live in
+// the DB and are configured via the dashboard.
 builder.Services.Configure<CloudflareOptions>(
     builder.Configuration.GetSection(CloudflareOptions.SectionName));
-builder.Services.Configure<ApiOptions>(
-    builder.Configuration.GetSection(ApiOptions.SectionName));
-builder.Services.Configure<StorageOptions>(
-    builder.Configuration.GetSection(StorageOptions.SectionName));
 builder.Services.Configure<DatabaseOptions>(
     builder.Configuration.GetSection(DatabaseOptions.SectionName));
 builder.Services.Configure<SettingsOptions>(
@@ -31,24 +29,27 @@ builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
 });
 
-// ---- Runtime-editable settings (Cloudflare D1 + S3 object storage) ------
-// SettingsStore persists dashboard edits to a JSON file; SettingsProvider merges
-// them over the env/appsettings defaults and is the live source read per-operation
-// by D1Client (Cloudflare D1) and S3Storage (S3-compatible object storage).
-builder.Services.AddSingleton<SettingsStore>();
+// ---- Config providers ----------------------------------------------------
+// DbConfigStore persists ONLY the database connection to a local JSON file
+// (App_Data/db.json). SettingsProvider exposes that effective DB config (live).
+// AppConfigProvider reads storage config + the release API key FROM THE DATABASE
+// (cached; reloaded on dashboard save), since those now live in the DB.
+builder.Services.AddSingleton<DbConfigStore>();
 builder.Services.AddSingleton<SettingsProvider>();
+builder.Services.AddSingleton<AppConfigProvider>();
 
 // ---- Data + storage ------------------------------------------------------
 // Pluggable database: D1 (HTTP) or EF Core SQL (sqlite/postgres/mysql/sqlserver),
-// chosen at runtime from settings. DatabaseService resolves the right impl per scope;
-// the VideoRepository/AppReleaseRepository facades ensure schema + delegate.
+// chosen at runtime from the DB config. DatabaseService resolves the right impl per
+// scope; the VideoRepository/AppReleaseRepository/AdminRepository facades ensure
+// schema + delegate.
 builder.Services.AddHttpClient<D1Client>();
 builder.Services.AddSingleton<EfContextFactory>();
 builder.Services.AddScoped<DatabaseService>();
 builder.Services.AddScoped<VideoRepository>();
 builder.Services.AddScoped<AppReleaseRepository>();
+builder.Services.AddScoped<AdminRepository>();      // DB-backed (admin lives in the DB)
 builder.Services.AddScoped<VideoCreationService>();
-builder.Services.AddSingleton<AdminRepository>();   // local store over the settings file
 builder.Services.AddSingleton<S3Storage>();
 builder.Services.AddSingleton<PasswordHasher>();
 builder.Services.AddScoped<ApiKeyFilter>();
@@ -150,7 +151,10 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-app.MapGet("/api/health", () => Results.Ok(new { status = "ok" })).WithTags("system");
+// Health + identity signature so a client can verify this is genuinely THIS backend
+// (not a random URL that returns 200). Additive: `status` stays; `service`/`api` are new.
+app.MapGet("/api/health", () => Results.Ok(new { status = "ok", service = "tv-video-hub", api = "v1" }))
+    .WithTags("system");
 
 app.MapVideoEndpoints();
 app.MapAppEndpoints();

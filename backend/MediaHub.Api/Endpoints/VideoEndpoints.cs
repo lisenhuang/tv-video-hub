@@ -27,8 +27,9 @@ public static class VideoEndpoints
             var v = await repo.GetAsync(id, ct);
             if (v is null) return Results.NotFound();
 
-            var (url, expires) = r2.GetPresignedGetUrl(
-                r2.VideoBucket, v.ObjectKey, responseContentType: v.MimeType);
+            var videoBucket = await r2.GetVideoBucketAsync(ct);
+            var (url, expires) = await r2.GetPresignedGetUrlAsync(
+                videoBucket, v.ObjectKey, responseContentType: v.MimeType, ct: ct);
 
             return Results.Ok(new VideoDetailDto(
                 v.Id, v.Title, v.Description, v.ThumbnailUrl, v.DurationSeconds,

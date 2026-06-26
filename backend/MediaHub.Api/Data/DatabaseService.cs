@@ -46,12 +46,46 @@ public sealed class DatabaseService(
         _ => new EfAppReleaseRepository(efFactory),
     };
 
+    public IAdminRepository Admins => Provider switch
+    {
+        DatabaseProviderKind.D1 => new D1AdminRepository(d1),
+        DatabaseProviderKind.None => throw new DatabaseNotConfiguredException(),
+        _ => new EfAdminRepository(efFactory),
+    };
+
+    public IAppConfigRepository AppConfig => Provider switch
+    {
+        DatabaseProviderKind.D1 => new D1AppConfigRepository(d1),
+        DatabaseProviderKind.None => throw new DatabaseNotConfiguredException(),
+        _ => new EfAppConfigRepository(efFactory),
+    };
+
     public ISchemaInitializer SchemaInitializer => Provider switch
     {
         DatabaseProviderKind.D1 => new D1SchemaInitializer(d1, loggerFactory.CreateLogger<D1SchemaInitializer>()),
         DatabaseProviderKind.None => throw new DatabaseNotConfiguredException(),
         _ => new EfSchemaInitializer(efFactory, loggerFactory.CreateLogger<EfSchemaInitializer>()),
     };
+
+    /// <summary>
+    /// True if the configured DB actually connects (ensures schema + a trivial read).
+    /// Returns false (never throws) if not configured or unreachable — used by the
+    /// setup-state probe and the DB-backed config provider.
+    /// </summary>
+    public async Task<bool> CanConnectAsync(CancellationToken ct = default)
+    {
+        if (!IsConfigured) return false;
+        try
+        {
+            await TryEnsureSchemaAsync(ct);
+            await Releases.GetLatestAsync(ct);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     /// <summary>
     /// Ensure the schema exists for the current provider, at most once per distinct

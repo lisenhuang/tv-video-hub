@@ -4,47 +4,35 @@ using Microsoft.Extensions.Options;
 namespace MediaHub.Api.Settings;
 
 /// <summary>
-/// Single source of truth for the config in effect. The <b>local settings file</b>
-/// (via <see cref="SettingsStore"/>) is authoritative; env/appsettings options are
-/// read only as OPTIONAL seeds/defaults. With no env and no file the app still
-/// starts — everything is then configured through the <c>/admin</c> dashboard.
+/// Source of truth for the <b>database connection</b> only. The on-disk DB-config file
+/// (via <see cref="DbConfigStore"/>) is authoritative; env/appsettings are read only as
+/// OPTIONAL seeds. With no env and no file the app still starts — the dashboard
+/// configures the DB first, and everything else (admin, storage, api key) then lives
+/// IN THE DATABASE (see <see cref="AppConfigProvider"/>).
 ///
-/// Exposes effective snapshots: <see cref="Database"/> (pluggable: D1 or SQL),
-/// <see cref="Storage"/> (S3-compatible object storage), and the release
-/// <see cref="ApiKey"/>. The admin account lives here too (local, no DB needed).
-/// Registered as a singleton; consumers read per operation, so a dashboard edit
-/// takes effect on the next request without a restart.
+/// Registered as a singleton. <see cref="Data.D1Client"/>, <see cref="Data.Ef.EfContextFactory"/>
+/// and <see cref="Data.DatabaseService"/> read <see cref="Database"/> per operation, so a
+/// dashboard DB-config save takes effect without a restart.
 /// </summary>
 public sealed class SettingsProvider
 {
     private readonly CloudflareOptions _cloudflareSeed;
-    private readonly StorageOptions _storageSeed;
-    private readonly ApiOptions _apiSeed;
     private readonly DatabaseOptions _databaseSeed;
-    private readonly SettingsStore _store;
+    private readonly DbConfigStore _store;
     private readonly object _gate = new();
 
     private EffectiveDatabaseConfig _database;
-    private EffectiveStorageConfig _storage;
-    private string _apiKey;
 
     public SettingsProvider(
         IOptions<CloudflareOptions> cloudflareSeed,
-        IOptions<StorageOptions> storageSeed,
-        IOptions<ApiOptions> apiSeed,
         IOptions<DatabaseOptions> databaseSeed,
-        SettingsStore store)
+        DbConfigStore store)
     {
         _cloudflareSeed = cloudflareSeed.Value;
-        _storageSeed = storageSeed.Value;
-        _apiSeed = apiSeed.Value;
         _databaseSeed = databaseSeed.Value;
         _store = store;
 
-        var s = _store.Load();
-        _database = BuildDatabase(s.Database);
-        _storage = BuildStorage(s.Storage);
-        _apiKey = BuildApiKey(s.Api);
+        _database = BuildDatabase(_store.Load());
     }
 
     /// <summary>The current effective database config snapshot.</summary>
@@ -53,33 +41,16 @@ public sealed class SettingsProvider
         get { lock (_gate) return _database; }
     }
 
-    /// <summary>The current effective S3-compatible object-storage config snapshot.</summary>
-    public EffectiveStorageConfig Storage
-    {
-        get { lock (_gate) return _storage; }
-    }
+    /// <summary>The raw on-disk DB config (used by the settings endpoints).</summary>
+    public DatabaseFileConfig LoadFile() => _store.Load();
 
-    /// <summary>The current effective release write secret (may be empty = disabled).</summary>
-    public string ApiKey
-    {
-        get { lock (_gate) return _apiKey; }
-    }
-
-    /// <summary>The raw persisted settings (used by the settings/admin endpoints).</summary>
-    public PersistedSettings Load() => _store.Load();
-
-    /// <summary>
-    /// Persist new settings and atomically refresh all snapshots so the next
-    /// request sees them.
-    /// </summary>
-    public void Save(PersistedSettings settings)
+    /// <summary>Persist new DB config and atomically refresh the snapshot.</summary>
+    public void SaveFile(DatabaseFileConfig config)
     {
         lock (_gate)
         {
-            _store.Save(settings);
-            _database = BuildDatabase(settings.Database);
-            _storage = BuildStorage(settings.Storage);
-            _apiKey = BuildApiKey(settings.Api);
+            _store.Save(config);
+            _database = BuildDatabase(config);
         }
     }
 
@@ -88,16 +59,13 @@ public sealed class SettingsProvider
     {
         lock (_gate)
         {
-            var s = _store.Load();
-            _database = BuildDatabase(s.Database);
-            _storage = BuildStorage(s.Storage);
-            _apiKey = BuildApiKey(s.Api);
+            _database = BuildDatabase(_store.Load());
         }
     }
 
-    private EffectiveDatabaseConfig BuildDatabase(PersistedSettings.DatabaseSettings d)
+    private EffectiveDatabaseConfig BuildDatabase(DatabaseFileConfig d)
     {
-        // Provider: persisted wins; else the seed default (which itself may be empty → None).
+        // Provider: file wins; else the seed default (which itself may be empty → None).
         var providerStr = !string.IsNullOrWhiteSpace(d.Provider) ? d.Provider : _databaseSeed.Provider;
         var provider = EffectiveDatabaseConfig.ParseProvider(providerStr);
 
@@ -113,27 +81,6 @@ public sealed class SettingsProvider
             ConnectionString = Pick(d.ConnectionString, _databaseSeed.ConnectionString),
         };
     }
-
-    private EffectiveStorageConfig BuildStorage(PersistedSettings.StorageOverrides o)
-    {
-        var ttl = o.PresignTtlMinutes is { } t and > 0 ? t : _storageSeed.PresignTtlMinutes;
-
-        return new EffectiveStorageConfig
-        {
-            ServiceUrl = Pick(o.ServiceUrl, _storageSeed.ServiceUrl),
-            Region = Pick(o.Region, _storageSeed.Region),
-            AccessKeyId = Pick(o.AccessKeyId, _storageSeed.AccessKeyId),
-            SecretAccessKey = Pick(o.SecretAccessKey, _storageSeed.SecretAccessKey),
-            VideoBucket = Pick(o.VideoBucket, _storageSeed.VideoBucket),
-            ApkBucket = Pick(o.ApkBucket, _storageSeed.ApkBucket),
-            ForcePathStyle = o.ForcePathStyle ?? _storageSeed.ForcePathStyle,
-            PresignTtlMinutes = ttl,
-            DisablePayloadSigning = o.DisablePayloadSigning ?? _storageSeed.DisablePayloadSigning,
-            UseChecksumWhenRequired = o.UseChecksumWhenRequired ?? _storageSeed.UseChecksumWhenRequired,
-        };
-    }
-
-    private string BuildApiKey(PersistedSettings.ApiSettings a) => Pick(a.Key, _apiSeed.Key);
 
     /// <summary>Override wins when non-empty; otherwise fall back to the seed default.</summary>
     private static string Pick(string? overrideValue, string defaultValue) =>

@@ -33,8 +33,9 @@ public sealed class VideoCreationService(VideoRepository repo, S3Storage storage
         var mime = string.IsNullOrWhiteSpace(file.ContentType) ? "video/mp4" : file.ContentType;
         var key = $"videos/{id}/{SanitizeFileName(file.FileName)}";
 
+        var videoBucket = await storage.GetVideoBucketAsync(ct);
         await using (var stream = file.OpenReadStream())
-            await storage.PutAsync(storage.VideoBucket, key, stream, mime, ct);
+            await storage.PutAsync(videoBucket, key, stream, mime, ct);
 
         var uploaded = new Video
         {
@@ -57,7 +58,8 @@ public sealed class VideoCreationService(VideoRepository repo, S3Storage storage
         if (body is null || string.IsNullOrWhiteSpace(body.ObjectKey) || string.IsNullOrWhiteSpace(body.Title))
             return Result.Fail("title and objectKey are required.");
 
-        if (!await storage.ExistsAsync(storage.VideoBucket, body.ObjectKey, ct))
+        var videoBucket = await storage.GetVideoBucketAsync(ct);
+        if (!await storage.ExistsAsync(videoBucket, body.ObjectKey, ct))
             return Result.Fail($"object '{body.ObjectKey}' not found in video bucket.");
 
         var video = new Video
@@ -87,7 +89,8 @@ public sealed class VideoCreationService(VideoRepository repo, S3Storage storage
         // row so a storage hiccup can't leave a dangling catalog entry.
         try
         {
-            await storage.DeleteAsync(storage.VideoBucket, video.ObjectKey, ct);
+            var videoBucket = await storage.GetVideoBucketAsync(ct);
+            await storage.DeleteAsync(videoBucket, video.ObjectKey, ct);
         }
         catch (Amazon.S3.AmazonS3Exception)
         {

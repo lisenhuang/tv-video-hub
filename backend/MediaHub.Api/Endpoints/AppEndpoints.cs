@@ -56,8 +56,9 @@ public static class AppEndpoints
             : await repo.GetLatestAsync(ct);
         if (release is null) return Results.NotFound();
 
-        var (url, _) = r2.GetPresignedGetUrl(
-            r2.ApkBucket, release.ObjectKey, responseContentType: ApkContentType);
+        var apkBucket = await r2.GetApkBucketAsync(ct);
+        var (url, _) = await r2.GetPresignedGetUrlAsync(
+            apkBucket, release.ObjectKey, responseContentType: ApkContentType, ct: ct);
         return Results.Redirect(url);
     }
 
@@ -99,9 +100,10 @@ public static class AppEndpoints
                 sha256Hex = Convert.ToHexStringLower(hash);
             }
 
+            var apkBucket = await r2.GetApkBucketAsync(ct);
             await using (var upload = File.OpenRead(tempPath))
             {
-                await r2.PutAsync(r2.ApkBucket, key, upload, ApkContentType, ct);
+                await r2.PutAsync(apkBucket, key, upload, ApkContentType, ct);
             }
         }
         finally

@@ -5,28 +5,23 @@ services:
       - "8080:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Production
-    # No env is REQUIRED — the app boots with zero config and is set up at /admin.
-    # The local settings file (admin account + DB/storage/api config, and a SQLite DB
-    # if you pick sqlite) lives under /app/App_Data, so persist it with a volume:
+    # 📦 The ONLY state on disk is the DB-connection file: /app/App_Data/db.json
+    # (admin, storage config, release key, and your videos all live IN THE DATABASE).
+    # Persist App_Data so a NEW image/container reuses the same DB connection — and
+    # therefore all the admin/storage/data, which live in the DB. If you pick the
+    # 'sqlite' provider, the .db file also lives here.
     volumes:
       - mediahub_data:/app/App_Data
     restart: unless-stopped
 
-    # OPTIONAL: pre-seed config via env instead of the dashboard. Uncomment as needed.
+    # OPTIONAL: instead of (or in addition to) the volume, you can seed the DB
+    # connection via env so a stateless container needs no file at all. Uncomment:
     #   environment:
     #     Database__Provider: ${DATABASE_PROVIDER}            # d1 | sqlite | postgres | mysql | sqlserver
     #     Database__ConnectionString: ${DATABASE_CONNECTION_STRING}
     #     Cloudflare__AccountId: ${CF_ACCOUNT_ID}             # D1 only
     #     Cloudflare__D1__DatabaseId: ${CF_D1_DATABASE_ID}
     #     Cloudflare__D1__ApiToken: ${CF_D1_API_TOKEN}
-    #     Storage__ServiceUrl: ${STORAGE_SERVICE_URL}
-    #     Storage__Region: ${STORAGE_REGION:-auto}
-    #     Storage__AccessKeyId: ${STORAGE_ACCESS_KEY_ID}
-    #     Storage__SecretAccessKey: ${STORAGE_SECRET_ACCESS_KEY}
-    #     Storage__VideoBucket: ${STORAGE_VIDEO_BUCKET:-videos}
-    #     Storage__ApkBucket: ${STORAGE_APK_BUCKET:-apks}
-    #     Storage__ForcePathStyle: ${STORAGE_FORCE_PATH_STYLE:-true}
-    #     Api__Key: ${API_KEY}
 
 volumes:
   mediahub_data:

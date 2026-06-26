@@ -97,3 +97,12 @@ public sealed record SettingsUpdateRequest(
 public sealed record ConnectionResultDto(bool Ok, string Message);
 
 public sealed record SettingsTestDto(ConnectionResultDto Database, ConnectionResultDto Storage);
+
+/// <summary>Bootstrap-step view of the on-disk database connection (secrets masked).</summary>
+public sealed record DbConfigViewDto(
+    string DatabaseProvider,
+    string AccountId,
+    string D1DatabaseId,
+    MaskedSecretDto D1ApiToken,
+    MaskedSecretDto DatabaseConnectionString,
+    bool DatabaseConfigured);

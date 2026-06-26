@@ -1,59 +1,37 @@
-using MediaHub.Api.Settings;
+using MediaHub.Api.Models;
 
 namespace MediaHub.Api.Data;
 
 /// <summary>
-/// The single local admin account, stored in the local settings file (NOT in the
-/// database). This removes the database chicken-and-egg: the first run can create an
-/// admin and log in with no DB configured at all. PBKDF2 hashing stays in
-/// <see cref="Auth.PasswordHasher"/>.
+/// Scoped facade for the admin account, now stored IN THE DATABASE (the <c>admins</c>
+/// table). Ensures the schema lazily, then delegates to the provider-specific
+/// implementation. Requires the database to be configured + reachable — first-run
+/// flow configures the DB before creating the admin.
 /// </summary>
-public sealed class AdminRepository(SettingsProvider settings)
+public sealed class AdminRepository(DatabaseService db) : IAdminRepository
 {
-    /// <summary>True once an admin exists in the local store.</summary>
-    public bool Exists()
+    public async Task<long> CountAsync(CancellationToken ct = default)
     {
-        var a = settings.Load().Admin;
-        return a is not null
-            && !string.IsNullOrWhiteSpace(a.Username)
-            && !string.IsNullOrWhiteSpace(a.PasswordHash);
+        await db.TryEnsureSchemaAsync(ct);
+        return await db.Admins.CountAsync(ct);
     }
 
-    /// <summary>The stored admin, or null if not set up yet.</summary>
-    public PersistedSettings.AdminAccount? Get() => Exists() ? settings.Load().Admin : null;
-
-    public PersistedSettings.AdminAccount? GetByUsername(string username)
+    public async Task<Admin?> GetByUsernameAsync(string username, CancellationToken ct = default)
     {
-        var a = Get();
-        return a is not null && string.Equals(a.Username, username, StringComparison.Ordinal) ? a : null;
+        await db.TryEnsureSchemaAsync(ct);
+        return await db.Admins.GetByUsernameAsync(username, ct);
     }
 
-    /// <summary>
-    /// Create the single admin. Returns false if one already exists (single-admin model).
-    /// </summary>
-    public bool TryCreate(string username, string passwordHash, string passwordSalt)
+    public async Task InsertAsync(Admin admin, CancellationToken ct = default)
     {
-        var s = settings.Load();
-        if (s.Admin is { Username: not null and not "" } && !string.IsNullOrWhiteSpace(s.Admin.PasswordHash))
-            return false;
-
-        s.Admin = new PersistedSettings.AdminAccount
-        {
-            Username = username,
-            PasswordHash = passwordHash,
-            PasswordSalt = passwordSalt,
-            CreatedAt = DateTimeOffset.UtcNow.ToString("O"),
-        };
-        settings.Save(s);
-        return true;
+        await db.TryEnsureSchemaAsync(ct);
+        await db.Admins.InsertAsync(admin, ct);
     }
 
-    public void UpdatePassword(string passwordHash, string passwordSalt)
+    public async Task UpdatePasswordAsync(
+        string username, string passwordHash, string passwordSalt, CancellationToken ct = default)
     {
-        var s = settings.Load();
-        if (s.Admin is null) return;
-        s.Admin.PasswordHash = passwordHash;
-        s.Admin.PasswordSalt = passwordSalt;
-        settings.Save(s);
+        await db.TryEnsureSchemaAsync(ct);
+        await db.Admins.UpdatePasswordAsync(username, passwordHash, passwordSalt, ct);
     }
 }

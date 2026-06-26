@@ -75,7 +75,11 @@ Read endpoints are public (or gated by an optional device key); write endpoints
 (`POST`) require the `X-Api-Key` header.
 
 ### `GET /api/health`
-Liveness probe. → `200 { "status": "ok" }`
+Liveness probe + identity signature (lets a client confirm a URL is genuinely this
+backend, not just any server returning 200).
+→ `200 { "status": "ok", "service": "tv-video-hub", "api": "v1" }`
+
+The `service`/`api` fields are additive; clients that only check the HTTP status still work.
 
 ### `GET /api/videos`
 List the playable catalog, newest first.
@@ -175,19 +179,22 @@ reference an object already in R2 (`application/json` with `objectKey`).
 
 ## Configuration (backend)
 
-**Zero env required.** Boot the backend and configure everything at **`/admin`** —
-admin account, **database**, **object storage**, and the release key — persisted to a
-local file (`App_Data/settings.json`). Env vars are only OPTIONAL seeds.
+**Zero env required.** Boot the backend and configure everything at **`/admin`**.
 
+- 💾 **Only the database connection is on disk** (`App_Data/db.json`). The **admin
+  account, object-storage config, and release API key all live IN THE DATABASE** (tables
+  `admins`, `app_config`). Setup order: **connect a database → create the admin → set
+  storage + release key.**
 - 🗄️ **Database (pluggable):** Cloudflare **D1** *or* self-hosted SQL via EF Core —
   **SQLite / PostgreSQL / SQL Server** (MySQL selectable; provider not bundled, see
-  `backend/README.md`). First run needs **no database** — the admin is stored locally.
+  `backend/README.md`).
 - 📦 **Object storage:** any **S3-compatible** store (R2 default; AWS S3, MinIO, B2, …).
 
-Optional seed env vars (full list + presets in [`backend/README.md`](backend/README.md)):
-`Database__Provider`, `Database__ConnectionString`, `Cloudflare__*` (D1), `Storage__*`,
-`Api__Key`. In Docker, persist the `App_Data` volume (it holds the authoritative config
-and, for the `sqlite` provider, the database file).
+Only the DB connection can be seeded via env (`Database__Provider`,
+`Database__ConnectionString`, `Cloudflare__*` for D1). 💾 **Stateless upgrades:** persist
+the `App_Data` volume (or seed the DB connection via env) and a new container reuses the
+same DB — and therefore the admin, storage, and all data, which live in the DB. Full
+details in [`backend/README.md`](backend/README.md).
 
 ## Configuration (android)
 

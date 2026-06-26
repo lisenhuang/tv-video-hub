@@ -4,18 +4,19 @@ namespace MediaHub.Api.Auth;
 
 /// <summary>
 /// Endpoint filter that guards write endpoints with the <c>X-Api-Key</c> header.
-/// The key is read live from <see cref="SettingsProvider"/> (dashboard-editable), so
-/// changes take effect without a restart. If no key is configured the endpoint is
-/// refused (503) rather than left open.
+/// The key now lives IN THE DATABASE and is read live (cached) from
+/// <see cref="AppConfigProvider"/>, so dashboard changes take effect without a restart.
+/// If no key is configured (or the DB isn't ready yet) the endpoint is refused (503)
+/// rather than left open.
 /// </summary>
-public sealed class ApiKeyFilter(SettingsProvider settings) : IEndpointFilter
+public sealed class ApiKeyFilter(AppConfigProvider appConfig) : IEndpointFilter
 {
     public const string HeaderName = "X-Api-Key";
 
     public async ValueTask<object?> InvokeAsync(
         EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
-        var key = settings.ApiKey;
+        var key = await appConfig.GetApiKeyAsync(context.HttpContext.RequestAborted);
         if (string.IsNullOrEmpty(key))
         {
             return Results.Problem(
