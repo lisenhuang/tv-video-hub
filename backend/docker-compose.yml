@@ -1,0 +1,17 @@
+services:
+  mediahub:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      # Provide these via a .env file or your orchestrator's secret store.
+      Cloudflare__AccountId: ${CF_ACCOUNT_ID}
+      Cloudflare__D1__DatabaseId: ${CF_D1_DATABASE_ID}
+      Cloudflare__D1__ApiToken: ${CF_D1_API_TOKEN}
+      Cloudflare__R2__AccessKeyId: ${CF_R2_ACCESS_KEY_ID}
+      Cloudflare__R2__SecretAccessKey: ${CF_R2_SECRET_ACCESS_KEY}
+      Cloudflare__R2__VideoBucket: ${CF_R2_VIDEO_BUCKET:-videos}
+      Cloudflare__R2__ApkBucket: ${CF_R2_APK_BUCKET:-apks}
+      Api__Key: ${API_KEY}
+    restart: unless-stopped
