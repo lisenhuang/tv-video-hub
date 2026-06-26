@@ -152,6 +152,19 @@ body {
 .muted { color: var(--muted); }
 .hint { color: var(--muted); font-size: 12px; font-weight: 400; }
 
+/* Inline caption row inside a form label: field name + required marker + help icon. */
+.lbl { display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.req { color: var(--danger); font-weight: 700; }
+.qmark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 50%;
+  border: 1px solid var(--border); color: var(--muted);
+  font-size: 10px; font-weight: 700; line-height: 1;
+  cursor: help; user-select: none;
+}
+.qmark:hover { color: var(--text); border-color: var(--muted); }
+.qmark:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+
 /* ---- Forms -------------------------------------------------------------- */
 .form { display: flex; flex-direction: column; gap: 14px; }
 .form label {
@@ -235,8 +248,12 @@ fieldset.group legend {
 }
 .checkbox input { width: auto; flex: none; }
 
-/* Provider-conditional database fields */
-.db-fields { display: flex; flex-direction: column; gap: 14px; }
+/* Provider-conditional database fields. These are shown/hidden via the `hidden`
+   attribute in JS, so scope the flex display to :not([hidden]) — a bare
+   `.db-fields { display:flex }` overrides the UA `[hidden]{display:none}` (equal
+   specificity, author rule wins), which would leave every provider's fields
+   visible at once regardless of the chosen provider. */
+.db-fields:not([hidden]) { display: flex; flex-direction: column; gap: 14px; }
 
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
 

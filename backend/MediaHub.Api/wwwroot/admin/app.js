@@ -170,6 +170,18 @@ function applyDbSetupProvider() {
   $('db-conn-help').textContent = DB_CONN_HELP[p] || '';
 }
 
+// Name of the first required field that's still empty for the chosen provider, or null.
+function dbSetupMissingField(provider) {
+  if (provider === 'd1') {
+    if (!$('db-account').value.trim()) return 'Account ID';
+    if (!$('db-dbid').value.trim()) return 'D1 Database ID';
+    if (!$('db-token').value.trim()) return 'D1 API Token';
+  } else if (!$('db-conn').value.trim()) {
+    return 'Connection string';
+  }
+  return null;
+}
+
 async function loadDbSetup() {
   const { res, data } = await apiJson('/api/admin/db-config', 'GET');
   if (res.ok && data) {
@@ -188,6 +200,8 @@ function wireDbSetup() {
     e.preventDefault();
     const provider = $('db-provider').value;
     if (!provider) { banner('Choose a database provider.', 'error'); return; }
+    const missing = dbSetupMissingField(provider);
+    if (missing) { banner(`${missing} is required.`, 'error'); return; }
     const body = {
       databaseProvider: provider,
       accountId: $('db-account').value,
