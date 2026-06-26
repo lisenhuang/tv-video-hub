@@ -31,14 +31,14 @@ public static class AppEndpoints
         // GET /api/app/download?versionCode=N — 302 to a presigned APK URL
         // (latest if versionCode is omitted).
         group.MapGet("/download", async (
-            int? versionCode, AppReleaseRepository repo, S3Storage r2, CancellationToken ct) =>
-            await RedirectToApkAsync(versionCode, repo, r2, ct));
+            HttpContext http, int? versionCode, AppReleaseRepository repo, StorageRouter r2, CancellationToken ct) =>
+            await RedirectToApkAsync(http, versionCode, repo, r2, ct));
 
         // GET /api/app/latest.apk — fixed-path alias that 302s to the latest APK.
         // Same logic as /download with no versionCode; a stable URL for the latest build.
         group.MapGet("/latest.apk", async (
-            AppReleaseRepository repo, S3Storage r2, CancellationToken ct) =>
-            await RedirectToApkAsync(null, repo, r2, ct));
+            HttpContext http, AppReleaseRepository repo, StorageRouter r2, CancellationToken ct) =>
+            await RedirectToApkAsync(http, null, repo, r2, ct));
 
         // POST /api/app/releases — CI publishes a build (multipart). Requires X-Api-Key.
         group.MapPost("/releases", PublishReleaseAsync)
@@ -49,7 +49,7 @@ public static class AppEndpoints
     }
 
     private static async Task<IResult> RedirectToApkAsync(
-        int? versionCode, AppReleaseRepository repo, S3Storage r2, CancellationToken ct)
+        HttpContext http, int? versionCode, AppReleaseRepository repo, StorageRouter r2, CancellationToken ct)
     {
         var release = versionCode is { } vc
             ? await repo.GetByVersionAsync(vc, ct)
@@ -57,13 +57,15 @@ public static class AppEndpoints
         if (release is null) return Results.NotFound();
 
         var apkBucket = await r2.GetApkBucketAsync(ct);
+        // Pass this backend's base URL so local (/api/media/...) download URLs are absolute.
         var (url, _) = await r2.GetPresignedGetUrlAsync(
-            apkBucket, release.ObjectKey, responseContentType: ApkContentType, ct: ct);
+            apkBucket, release.ObjectKey, responseContentType: ApkContentType,
+            baseUrl: $"{http.Request.Scheme}://{http.Request.Host}", ct: ct);
         return Results.Redirect(url);
     }
 
     private static async Task<IResult> PublishReleaseAsync(
-        HttpContext http, AppReleaseRepository repo, S3Storage r2, CancellationToken ct)
+        HttpContext http, AppReleaseRepository repo, StorageRouter r2, CancellationToken ct)
     {
         if (!http.Request.HasFormContentType)
             return Results.BadRequest(new { error = "expected multipart/form-data." });

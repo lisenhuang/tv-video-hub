@@ -228,49 +228,76 @@
             </fieldset>
 
             <fieldset class="group">
-              <legend>Object storage (S3-compatible — R2, AWS S3, MinIO, B2, …)</legend>
-              <div class="row">
-                <label>Service URL (S3 endpoint)
-                  <input id="s-serviceurl" name="storageServiceUrl" type="text" placeholder="empty = AWS regional endpoint" />
+              <legend>Object storage</legend>
+              <label>Storage provider
+                <select id="s-provider" name="storageProvider">
+                  <option value="s3">S3-compatible (R2, AWS S3, MinIO, B2, …)</option>
+                  <option value="local">Local disk (this server's filesystem)</option>
+                </select>
+              </label>
+
+              <div id="s-local-fields" class="storage-fields" hidden>
+                <label>Local media directory
+                  <input id="s-localpath" name="storageLocalBasePath" type="text" placeholder="App_Data/media" />
+                  <span class="hint">Files are served at <code>/api/media/…</code> via short-lived signed URLs (range-capable). Persist this directory (Docker volume).</span>
                 </label>
-                <label>Region
-                  <input id="s-region" name="storageRegion" type="text" placeholder="auto (R2) · us-east-1 (AWS)" />
-                </label>
-              </div>
-              <div class="row">
-                <label>Access Key ID <span id="s-akid-hint" class="hint"></span>
-                  <input id="s-akid" name="storageAccessKeyId" type="password" placeholder="leave blank to keep" autocomplete="new-password" />
-                </label>
-                <label>Secret Access Key <span id="s-secret-hint" class="hint"></span>
-                  <input id="s-secret" name="storageSecretAccessKey" type="password" placeholder="leave blank to keep" autocomplete="new-password" />
-                </label>
-              </div>
-              <div class="row">
-                <label>Video bucket
-                  <input id="s-vbucket" name="storageVideoBucket" type="text" />
-                </label>
-                <label>APK bucket
-                  <input id="s-abucket" name="storageApkBucket" type="text" />
-                </label>
-              </div>
-              <div class="row">
-                <label>Presign TTL (min)
-                  <input id="s-ttl" name="storagePresignTtlMinutes" type="number" min="1" />
-                </label>
-                <label class="checkbox">
-                  <input id="s-forcepath" name="storageForcePathStyle" type="checkbox" />
-                  Force path-style addressing <span class="hint">(R2/MinIO on; AWS virtual-hosted off)</span>
+                <div class="row">
+                  <label>Video bucket (subdirectory)
+                    <input id="s-vbucket-local" name="storageVideoBucketLocal" type="text" />
+                  </label>
+                  <label>APK bucket (subdirectory)
+                    <input id="s-abucket-local" name="storageApkBucketLocal" type="text" />
+                  </label>
+                </div>
+                <label>Signed-URL TTL (min)
+                  <input id="s-ttl-local" name="storagePresignTtlMinutesLocal" type="number" min="1" />
                 </label>
               </div>
-              <div class="row">
-                <label class="checkbox">
-                  <input id="s-disablesign" name="storageDisablePayloadSigning" type="checkbox" />
-                  Disable upload payload signing <span class="hint">(R2 needs this on)</span>
-                </label>
-                <label class="checkbox">
-                  <input id="s-checksum" name="storageUseChecksumWhenRequired" type="checkbox" />
-                  Checksums only when required <span class="hint">(keeps R2 presigns clean)</span>
-                </label>
+
+              <div id="s-s3-fields" class="storage-fields">
+                <div class="row">
+                  <label>Service URL (S3 endpoint)
+                    <input id="s-serviceurl" name="storageServiceUrl" type="text" placeholder="empty = AWS regional endpoint" />
+                  </label>
+                  <label>Region
+                    <input id="s-region" name="storageRegion" type="text" placeholder="auto (R2) · us-east-1 (AWS)" />
+                  </label>
+                </div>
+                <div class="row">
+                  <label>Access Key ID <span id="s-akid-hint" class="hint"></span>
+                    <input id="s-akid" name="storageAccessKeyId" type="password" placeholder="leave blank to keep" autocomplete="new-password" />
+                  </label>
+                  <label>Secret Access Key <span id="s-secret-hint" class="hint"></span>
+                    <input id="s-secret" name="storageSecretAccessKey" type="password" placeholder="leave blank to keep" autocomplete="new-password" />
+                  </label>
+                </div>
+                <div class="row">
+                  <label>Video bucket
+                    <input id="s-vbucket" name="storageVideoBucket" type="text" />
+                  </label>
+                  <label>APK bucket
+                    <input id="s-abucket" name="storageApkBucket" type="text" />
+                  </label>
+                </div>
+                <div class="row">
+                  <label>Presign TTL (min)
+                    <input id="s-ttl" name="storagePresignTtlMinutes" type="number" min="1" />
+                  </label>
+                  <label class="checkbox">
+                    <input id="s-forcepath" name="storageForcePathStyle" type="checkbox" />
+                    Force path-style addressing <span class="hint">(R2/MinIO on; AWS virtual-hosted off)</span>
+                  </label>
+                </div>
+                <div class="row">
+                  <label class="checkbox">
+                    <input id="s-disablesign" name="storageDisablePayloadSigning" type="checkbox" />
+                    Disable upload payload signing <span class="hint">(R2 needs this on)</span>
+                  </label>
+                  <label class="checkbox">
+                    <input id="s-checksum" name="storageUseChecksumWhenRequired" type="checkbox" />
+                    Checksums only when required <span class="hint">(keeps R2 presigns clean)</span>
+                  </label>
+                </div>
               </div>
             </fieldset>
 

@@ -9,7 +9,7 @@ namespace MediaHub.Api.Data;
 /// two stay behaviourally identical. Returns either the created video summary or a
 /// validation error message.
 /// </summary>
-public sealed class VideoCreationService(VideoRepository repo, S3Storage storage)
+public sealed class VideoCreationService(VideoRepository repo, StorageRouter storage)
 {
     public sealed record Result(VideoSummaryDto? Video, string? Error)
     {
@@ -85,14 +85,15 @@ public sealed class VideoCreationService(VideoRepository repo, S3Storage storage
 
         var deleted = await repo.DeleteAsync(id, ct);
 
-        // Best-effort R2 cleanup: the row is gone regardless. We delete after the
-        // row so a storage hiccup can't leave a dangling catalog entry.
+        // Best-effort storage cleanup: the row is gone regardless. We delete after the
+        // row so a storage hiccup can't leave a dangling catalog entry. Provider-agnostic
+        // (S3 or local), so swallow any storage error here.
         try
         {
             var videoBucket = await storage.GetVideoBucketAsync(ct);
             await storage.DeleteAsync(videoBucket, video.ObjectKey, ct);
         }
-        catch (Amazon.S3.AmazonS3Exception)
+        catch
         {
             // Object may already be absent or temporarily unavailable; the catalog
             // entry is removed either way.

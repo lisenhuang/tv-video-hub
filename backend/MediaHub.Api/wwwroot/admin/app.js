@@ -455,11 +455,24 @@ function applyDbProvider() {
   $('s-conn-help').textContent = CONN_HELP[p] || '';
 }
 
+function applyStorageProvider() {
+  const local = $('s-provider').value === 'local';
+  show($('s-local-fields'), local);
+  show($('s-s3-fields'), !local);
+}
+
 function wireSettings() {
   $('s-dbprovider').addEventListener('change', applyDbProvider);
+  $('s-provider').addEventListener('change', applyStorageProvider);
 
   $('settings-form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const provider = $('s-provider').value === 'local' ? 'local' : 's3';
+    const local = provider === 'local';
+    // Buckets + TTL are shared config keys; read from whichever provider's inputs are shown.
+    const videoBucket = local ? $('s-vbucket-local').value : $('s-vbucket').value;
+    const apkBucket = local ? $('s-abucket-local').value : $('s-abucket').value;
+    const ttlRaw = local ? $('s-ttl-local').value : $('s-ttl').value;
     const body = {
       // Database (pluggable)
       databaseProvider: $('s-dbprovider').value,
@@ -467,15 +480,17 @@ function wireSettings() {
       d1DatabaseId: $('s-dbid').value,
       d1ApiToken: $('s-token').value, // blank => unchanged
       databaseConnectionString: $('s-conn').value, // blank => unchanged
-      // Object storage (S3-compatible)
+      // Object storage
+      storageProvider: provider,
+      storageLocalBasePath: $('s-localpath').value,
       storageServiceUrl: $('s-serviceurl').value,
       storageRegion: $('s-region').value,
       storageAccessKeyId: $('s-akid').value, // blank => unchanged
       storageSecretAccessKey: $('s-secret').value, // blank => unchanged
-      storageVideoBucket: $('s-vbucket').value,
-      storageApkBucket: $('s-abucket').value,
+      storageVideoBucket: videoBucket,
+      storageApkBucket: apkBucket,
       storageForcePathStyle: $('s-forcepath').checked,
-      storagePresignTtlMinutes: $('s-ttl').value ? Number($('s-ttl').value) : null,
+      storagePresignTtlMinutes: ttlRaw ? Number(ttlRaw) : null,
       storageDisablePayloadSigning: $('s-disablesign').checked,
       storageUseChecksumWhenRequired: $('s-checksum').checked,
       // Release write secret
@@ -541,12 +556,20 @@ function fillSettings(s) {
   $('s-dbid').value = s.d1DatabaseId || '';
   applyDbProvider();
   $('s-db-status').textContent = s.databaseConfigured ? '✓ configured' : '(not configured)';
-  // Object storage (S3-compatible)
-  $('s-serviceurl').value = s.storageServiceUrl || '';
-  $('s-region').value = s.storageRegion || '';
+  // Object storage — provider selector + per-provider fields.
+  $('s-provider').value = s.storageProvider === 'local' ? 'local' : 's3';
+  applyStorageProvider();
+  $('s-localpath').value = s.storageLocalBasePath || '';
+  // Buckets + TTL are shared keys; mirror into both the s3 and local inputs.
   $('s-vbucket').value = s.storageVideoBucket || '';
   $('s-abucket').value = s.storageApkBucket || '';
   $('s-ttl').value = s.storagePresignTtlMinutes || '';
+  $('s-vbucket-local').value = s.storageVideoBucket || '';
+  $('s-abucket-local').value = s.storageApkBucket || '';
+  $('s-ttl-local').value = s.storagePresignTtlMinutes || '';
+  // S3-specific fields.
+  $('s-serviceurl').value = s.storageServiceUrl || '';
+  $('s-region').value = s.storageRegion || '';
   $('s-forcepath').checked = !!s.storageForcePathStyle;
   $('s-disablesign').checked = !!s.storageDisablePayloadSigning;
   $('s-checksum').checked = !!s.storageUseChecksumWhenRequired;

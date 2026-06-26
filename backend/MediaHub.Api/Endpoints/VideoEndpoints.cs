@@ -22,14 +22,16 @@ public static class VideoEndpoints
 
         // GET /api/videos/{id} — details + presigned playback URL.
         group.MapGet("/{id}", async (
-            string id, VideoRepository repo, S3Storage r2, CancellationToken ct) =>
+            HttpRequest req, string id, VideoRepository repo, StorageRouter r2, CancellationToken ct) =>
         {
             var v = await repo.GetAsync(id, ct);
             if (v is null) return Results.NotFound();
 
             var videoBucket = await r2.GetVideoBucketAsync(ct);
+            // Pass this backend's base URL so local (/api/media/...) playback URLs are absolute.
             var (url, expires) = await r2.GetPresignedGetUrlAsync(
-                videoBucket, v.ObjectKey, responseContentType: v.MimeType, ct: ct);
+                videoBucket, v.ObjectKey, responseContentType: v.MimeType,
+                baseUrl: $"{req.Scheme}://{req.Host}", ct: ct);
 
             return Results.Ok(new VideoDetailDto(
                 v.Id, v.Title, v.Description, v.ThumbnailUrl, v.DurationSeconds,

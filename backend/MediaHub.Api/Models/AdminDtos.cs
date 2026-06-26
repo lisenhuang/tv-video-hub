@@ -53,7 +53,9 @@ public sealed record SettingsViewDto(
     MaskedSecretDto D1ApiToken,
     MaskedSecretDto DatabaseConnectionString,
     bool DatabaseConfigured,
-    // Object storage (S3-compatible)
+    // Object storage. Provider: "s3" (default) | "local" (server filesystem).
+    string StorageProvider,
+    string StorageLocalBasePath,
     string StorageServiceUrl,
     string StorageRegion,
     MaskedSecretDto StorageAccessKeyId,
@@ -80,7 +82,9 @@ public sealed record SettingsUpdateRequest(
     string? D1DatabaseId,
     string? D1ApiToken,
     string? DatabaseConnectionString,
-    // Object storage (S3-compatible)
+    // Object storage. Provider: "s3" (default) | "local" (server filesystem).
+    string? StorageProvider,
+    string? StorageLocalBasePath,
     string? StorageServiceUrl,
     string? StorageRegion,
     string? StorageAccessKeyId,

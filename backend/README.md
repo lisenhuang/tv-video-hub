@@ -13,7 +13,9 @@ generates short-lived streaming URLs, and hosts APK builds for self-update.
   via EF Core: **SQLite / PostgreSQL / SQL Server** (MySQL selectable — see note below).
   Schema auto-created (D1 `CREATE TABLE IF NOT EXISTS`; EF `EnsureCreated()`), additive.
 - 📦 **Object storage:** any **S3-compatible** store (R2, AWS S3, MinIO, Backblaze B2, …)
-  via `AWSSDK.S3`. Videos/APKs stream/download via presigned URLs. R2-ready by default.
+  via `AWSSDK.S3`, **or Local disk** (the server's own filesystem). Videos/APKs
+  stream/download via short-lived presigned/signed URLs. R2-ready by default; local
+  serves at `/api/media/…` with HMAC-signed, range-capable URLs.
 
 See the [repo root README](../README.md) for the full HTTP/JSON contract.
 
@@ -44,14 +46,15 @@ MediaHub.Api/
 │   ├── SettingsProvider.cs         singleton; live DB-connection config (file + env seed)
 │   ├── AppConfigProvider.cs        singleton; storage + api-key read FROM THE DB (cached)
 │   ├── EffectiveDatabaseConfig.cs  resolved DB snapshot (provider + creds)
-│   └── EffectiveStorageConfig.cs   resolved S3 storage snapshot
-├── Storage/S3Storage.cs     presigned GET URLs + upload/delete/exists (config from the DB)
+│   └── EffectiveStorageConfig.cs   resolved storage snapshot (provider + S3/local fields)
+├── Storage/                 IObjectStorage: S3Storage + LocalStorage, picked per-call by StorageRouter
 ├── Auth/
 │   ├── ApiKeyFilter.cs      X-Api-Key guard (key read live from the DB)
 │   └── PasswordHasher.cs    PBKDF2/SHA-256 (framework crypto, no packages)
 ├── Endpoints/
 │   ├── VideoEndpoints.cs    GET /api/videos, GET /api/videos/{id}, POST /api/videos
 │   ├── AppEndpoints.cs      GET /api/app/latest|latest.apk|download, POST /api/app/releases
+│   ├── MediaEndpoints.cs    GET /api/media/{bucket}/{**key} — signed, range-capable local serving
 │   └── AdminEndpoints.cs    cookie-authed /api/admin/* dashboard API
 ├── wwwroot/admin/           the static admin dashboard (index.html + app.js + styles.css)
 └── Models/                  entities + DTOs
@@ -69,6 +72,7 @@ MediaHub.Api/
 | GET    | `/api/app/latest.apk`          | —           | 302 → presigned **latest** APK (fixed path) |
 | GET    | `/api/app/download?versionCode`| —           | 302 → presigned APK URL (latest if omitted) |
 | POST   | `/api/app/releases`            | `X-Api-Key` | publish a build (used by CI)         |
+| GET    | `/api/media/{bucket}/{**key}`  | signed URL  | serve a local-storage object (HMAC `sig`+`exp`, range-capable) |
 
 ### Admin dashboard (`/admin`)
 
@@ -162,6 +166,25 @@ payload-signing **on**, checksums **only when required** — these keep R2/MinIO
 URLs clean and ExoPlayer-streamable; strict AWS setups can flip them. With `ServiceUrl`
 set the SDK uses that endpoint + `AuthenticationRegion`; empty → AWS regional endpoint
 via `RegionEndpoint.GetBySystemName(Region)`.
+
+**💾 Local disk (no S3).** In the Storage form set **Storage provider → Local disk** and a
+**Local media directory** (default `App_Data/media`). Objects are stored at
+`{dir}/{bucket}/{key}` (the video/APK *bucket* names become subdirectories) and served by
+the backend itself at `GET /api/media/{bucket}/{**key}?exp=&sig=`:
+
+- **Short-lived HMAC-signed URLs** — `sig = base64url(HMACSHA256(localSigningKey,
+  "{bucket}/{key}|{exp}"))`, `exp` = unix seconds; the endpoint validates the signature
+  (constant-time) and expiry → else **403**. TTL = the storage TTL (min). The signing key
+  is **server-managed** (auto-generated 32 random bytes on first use, stored in
+  `app_config`, never shown in settings).
+- **HTTP range** support (`enableRangeProcessing`) so ExoPlayer can seek.
+- **Path-traversal guard** — keys are resolved under the base dir and rejected if they
+  escape it (no `..`, no rooted paths).
+- The app needs **no change**: `playbackUrl` / APK download URLs are just absolute URLs
+  pointing at this backend instead of S3.
+- **Persist the media directory.** `App_Data/media` sits under the existing `App_Data`
+  volume, but media gets large — a dedicated mount/volume is wise. Don't lose it on
+  redeploy.
 
 ### 🔄 How config + provider switching + schema init work
 

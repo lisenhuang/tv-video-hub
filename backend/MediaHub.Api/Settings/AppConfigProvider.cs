@@ -28,9 +28,16 @@ public sealed class AppConfigProvider(IServiceScopeFactory scopeFactory)
     public const string KeyStoragePresignTtlMinutes = "storage.presignTtlMinutes";
     public const string KeyStorageDisablePayloadSigning = "storage.disablePayloadSigning";
     public const string KeyStorageUseChecksumWhenRequired = "storage.useChecksumWhenRequired";
+    public const string KeyStorageProvider = "storage.provider";
+    public const string KeyStorageLocalBasePath = "storage.localBasePath";
+    public const string KeyStorageLocalSigningKey = "storage.localSigningKey";
     public const string KeyApiKey = "api.key";
 
+    /// <summary>Default filesystem base directory for the local provider.</summary>
+    public const string DefaultLocalBasePath = "App_Data/media";
+
     private readonly SemaphoreSlim _reloadGate = new(1, 1);
+    private readonly SemaphoreSlim _signingKeyGate = new(1, 1);
     private readonly object _swap = new();
 
     private volatile bool _loaded;
@@ -61,7 +68,41 @@ public sealed class AppConfigProvider(IServiceScopeFactory scopeFactory)
         var db = scope.ServiceProvider.GetRequiredService<DatabaseService>();
         await db.TryEnsureSchemaAsync(ct);
         await db.AppConfig.SetManyAsync(values, ct);
+        // Force a reload so the just-saved values are reflected in the cache (ReloadAsync
+        // no-ops while _loaded is true).
+        _loaded = false;
         await ReloadAsync(ct);
+    }
+
+    /// <summary>
+    /// Return the local HMAC signing key, generating + persisting a random 32-byte key
+    /// (base64) on first use. Server-managed; never surfaced in settings responses. The
+    /// generated key is saved via the app_config repo and reflected into the cache.
+    /// </summary>
+    public async Task<string> EnsureLocalSigningKeyAsync(CancellationToken ct = default)
+    {
+        var existing = (await GetStorageAsync(ct)).LocalSigningKey;
+        if (!string.IsNullOrWhiteSpace(existing)) return existing;
+
+        await _signingKeyGate.WaitAsync(ct);
+        try
+        {
+            // Re-check under the gate in case another caller just generated it.
+            existing = (await GetStorageAsync(ct)).LocalSigningKey;
+            if (!string.IsNullOrWhiteSpace(existing)) return existing;
+
+            var key = Convert.ToBase64String(
+                System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+            await SaveAsync(new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [KeyStorageLocalSigningKey] = key,
+            }, ct);
+            return key;
+        }
+        finally
+        {
+            _signingKeyGate.Release();
+        }
     }
 
     /// <summary>Mark the cache stale so the next read reloads from the DB.</summary>
@@ -119,6 +160,9 @@ public sealed class AppConfigProvider(IServiceScopeFactory scopeFactory)
 
     private static EffectiveStorageConfig BuildStorage(IReadOnlyDictionary<string, string> kv) => new()
     {
+        Provider = Get(kv, KeyStorageProvider, "s3"),
+        LocalBasePath = Get(kv, KeyStorageLocalBasePath, DefaultLocalBasePath),
+        LocalSigningKey = Get(kv, KeyStorageLocalSigningKey, string.Empty),
         ServiceUrl = Get(kv, KeyStorageServiceUrl, string.Empty),
         Region = Get(kv, KeyStorageRegion, "auto"),
         AccessKeyId = Get(kv, KeyStorageAccessKeyId, string.Empty),
@@ -133,6 +177,9 @@ public sealed class AppConfigProvider(IServiceScopeFactory scopeFactory)
 
     private static EffectiveStorageConfig EmptyStorage() => new()
     {
+        Provider = "s3",
+        LocalBasePath = DefaultLocalBasePath,
+        LocalSigningKey = string.Empty,
         ServiceUrl = string.Empty,
         Region = "auto",
         AccessKeyId = string.Empty,
