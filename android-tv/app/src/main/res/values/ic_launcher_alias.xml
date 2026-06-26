@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Legacy (API 23-25) launcher icon. Adaptive icons require API 26+, so for older
+      devices @mipmap/ic_launcher resolves through this alias to a plain vector
+      drawable. On API 26+ the mipmap-anydpi-v26/ic_launcher.xml adaptive icon wins
+      (more specific resource qualifier). Declaring it as type `mipmap` keeps the
+      @mipmap/ic_launcher reference in the manifest valid on all API levels without
+      shipping any binary PNGs.
+    -->
+    <item name="ic_launcher" type="mipmap">@drawable/ic_launcher_legacy</item>
+</resources>

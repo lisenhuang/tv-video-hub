@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Backend base URL.
+
+      The actual @string/backend_base_url value is generated at build time by the
+      `resValue("string", "backend_base_url", …)` declaration in app/build.gradle.kts,
+      driven by the `backendBaseUrl` Gradle property (default: https://media.example.com).
+
+      It is intentionally NOT redefined here: declaring it both via resValue and as a
+      static <string> would be a duplicate-resource error. Override the value with
+      `-PbackendBaseUrl=https://your-host` at build time. This file documents where the
+      resource comes from for anyone looking under res/values for it.
+
+      Kotlin reads the same value from BuildConfig.BACKEND_BASE_URL.
+    -->
+</resources>

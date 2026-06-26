@@ -1,0 +1,27 @@
+services:
+  mediahub:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+    # 📦 The ONLY state on disk is the DB-connection file: /app/App_Data/db.json
+    # (admin, storage config, release key, and your videos all live IN THE DATABASE).
+    # Persist App_Data so a NEW image/container reuses the same DB connection — and
+    # therefore all the admin/storage/data, which live in the DB. If you pick the
+    # 'sqlite' provider, the .db file also lives here.
+    volumes:
+      - mediahub_data:/app/App_Data
+    restart: unless-stopped
+
+    # OPTIONAL: instead of (or in addition to) the volume, you can seed the DB
+    # connection via env so a stateless container needs no file at all. Uncomment:
+    #   environment:
+    #     Database__Provider: ${DATABASE_PROVIDER}            # d1 | sqlite | postgres | mysql | sqlserver
+    #     Database__ConnectionString: ${DATABASE_CONNECTION_STRING}
+    #     Cloudflare__AccountId: ${CF_ACCOUNT_ID}             # D1 only
+    #     Cloudflare__D1__DatabaseId: ${CF_D1_DATABASE_ID}
+    #     Cloudflare__D1__ApiToken: ${CF_D1_API_TOKEN}
+
+volumes:
+  mediahub_data:

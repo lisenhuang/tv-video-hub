@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      The self-update flow downloads the APK into the app-specific external cache
+      directory (Context.externalCacheDir, e.g. /Android/data/<pkg>/cache/...).
+      `external-cache-path` maps that location so the FileProvider can mint a
+      content:// URI the package installer can read.
+    -->
+    <external-cache-path
+        name="apk_updates"
+        path="updates/" />
+
+    <!-- Fallback: internal cache, used if external cache is unavailable. -->
+    <cache-path
+        name="apk_updates_internal"
+        path="updates/" />
+</paths>

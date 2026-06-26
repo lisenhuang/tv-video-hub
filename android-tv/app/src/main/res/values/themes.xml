@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Base theme for a Compose-for-TV app. We don't depend on the Leanback theme
+      library; Compose draws all UI. We only need a non-action-bar, fullscreen-ish
+      Material host with a dark background so there is no flash before Compose renders.
+    -->
+    <style name="Theme.TvVideoHub" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:colorBackground">@android:color/black</item>
+        <item name="android:statusBarColor">@android:color/black</item>
+        <item name="android:navigationBarColor">@android:color/black</item>
+    </style>
+
+    <!-- Fullscreen, no system bars for the player. -->
+    <style name="Theme.TvVideoHub.Player" parent="Theme.TvVideoHub">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentTransitions">true</item>
+    </style>
+</resources>

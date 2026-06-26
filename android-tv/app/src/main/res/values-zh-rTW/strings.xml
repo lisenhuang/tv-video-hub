@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">電視影庫</string>
+
+    <string name="catalog_title">影片</string>
+    <string name="catalog_loading">載入中…</string>
+    <string name="catalog_empty">目前還沒有影片。</string>
+    <string name="catalog_error">無法載入影片。</string>
+    <string name="catalog_error_unknown">未知錯誤</string>
+    <string name="action_retry">重試</string>
+
+    <string name="player_loading">正在準備播放…</string>
+    <string name="player_error">播放失敗。</string>
+
+    <!-- Common actions -->
+    <string name="action_back">返回</string>
+    <string name="action_play">播放</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_ok">確定</string>
+    <string name="action_delete">刪除</string>
+    <string name="action_dismiss">關閉</string>
+    <string name="action_save">儲存</string>
+    <string name="action_test">測試</string>
+    <string name="action_testing">測試中…</string>
+
+    <!-- Catalog header -->
+    <string name="action_open_downloads">下載</string>
+    <string name="action_open_settings">設定</string>
+    <string name="badge_offline">⬇ 已離線</string>
+
+    <!-- Offline downloads -->
+    <string name="download_channel_name">下載</string>
+    <string name="action_download">下載</string>
+    <string name="action_remove_download">移除下載</string>
+    <string name="downloads_title">下載</string>
+    <string name="downloads_empty">尚未有下載內容。</string>
+    <string name="download_progress">正在下載 %1$d%%</string>
+    <string name="download_available_offline">✓ 可離線觀看</string>
+    <string name="download_failed">下載失敗</string>
+    <string name="download_status_completed">播放 • 長按可移除</string>
+    <string name="download_status_downloading">正在下載 %1$d%% • 輕觸可取消</string>
+    <string name="download_status_failed">失敗 • 輕觸可重試/移除</string>
+    <string name="download_status_pending">等待中</string>
+
+    <!-- Detail screen -->
+    <string name="detail_load_error">無法載入此影片。</string>
+    <string name="detail_loading">載入中…</string>
+
+    <!-- Setup / settings -->
+    <string name="settings_title">設定</string>
+    <string name="setup_title">歡迎使用</string>
+    <string name="setup_subtitle">請輸入影片後端的位址以開始使用。</string>
+    <string name="reconfigure_title">無法連線到後端</string>
+    <string name="reconfigure_subtitle">網路正常，但 %1$s 沒有回應。請檢查位址後再試一次。</string>
+    <string name="offline_title">您目前處於離線狀態</string>
+    <string name="offline_subtitle">沒有網路連線。您仍可觀看已下載的影片。</string>
+    <string name="offline_action_view_downloads">查看下載</string>
+
+    <!-- Backend URL screen -->
+    <string name="settings_backend_heading">後端</string>
+    <string name="settings_base_url_label">基礎網址</string>
+    <string name="setup_base_url_label">後端基礎網址（例如 https://media.example.com）</string>
+    <string name="settings_saved">已儲存</string>
+    <string name="settings_reachable">✓ 可連線</string>
+    <string name="settings_not_reachable">✗ 無法連線</string>
+    <string name="setup_reachable">✓ 可連線</string>
+    <string name="setup_not_reachable">✗ 無法連線到該網址</string>
+    <string name="settings_gate_change_backend">解題以變更後端位址</string>
+
+    <!-- Appearance / language -->
+    <string name="settings_appearance_heading">外觀</string>
+    <string name="settings_theme_system">跟隨系統</string>
+    <string name="settings_theme_light">淺色</string>
+    <string name="settings_theme_dark">深色</string>
+    <string name="settings_language_heading">語言</string>
+    <string name="settings_language_system">跟隨系統</string>
+    <string name="settings_language_english">English</string>
+    <string name="settings_language_chinese">中文</string>
+
+    <!-- Storage -->
+    <string name="settings_storage_heading">儲存空間</string>
+    <string name="settings_manage_storage">管理儲存空間與快取</string>
+    <string name="storage_title">儲存空間</string>
+    <string name="storage_cached_videos">本應用程式快取的影片：%1$s</string>
+    <string name="storage_device">裝置儲存空間：%2$s 中剩餘 %1$s</string>
+    <string name="storage_clear_streaming_cache">清除串流快取</string>
+    <string name="storage_empty">尚未有快取內容。</string>
+    <string name="storage_item_downloaded">已下載（離線）</string>
+    <string name="storage_item_streaming">串流快取</string>
+    <string name="storage_item_detail">%1$s • %2$s</string>
+    <string name="storage_unknown_video">影片 %1$s</string>
+
+    <!-- Parental gate -->
+    <string name="parental_check_title">家長驗證</string>
+    <string name="parental_default_prompt">請輸入答案以繼續</string>
+    <string name="parental_problem">%1$d × %2$d = ?</string>
+    <string name="parental_answer_label">答案</string>
+    <string name="parental_wrong">答案不對 — 換一題新的。</string>
+
+    <!-- Self-update -->
+    <string name="update_available_title">有可用更新</string>
+    <string name="update_available_message">%1$s 版本現已推出。立即更新嗎？</string>
+    <string name="update_action_update">更新</string>
+    <string name="update_action_later">稍後</string>
+    <string name="update_downloading">正在下載更新…</string>
+    <string name="update_downloading_body">正在下載並驗證新版本，請稍候。</string>
+    <string name="update_verifying">正在驗證更新…</string>
+    <string name="update_failed">更新失敗。</string>
+    <string name="update_failed_title">更新失敗</string>
+    <string name="update_install_permission_title">允許安裝</string>
+    <string name="update_install_permission_message">若要自動更新，請在下個畫面允許本應用程式安裝不明應用程式，然後再試一次。</string>
+    <string name="update_install_permission_message_choose">若要自動更新，請在下個畫面允許本應用程式安裝不明應用程式，然後再次選擇「更新」。</string>
+    <string name="update_action_open_settings">開啟設定</string>
+    <string name="update_notification_title">電視影庫 %1$s</string>
+    <string name="update_error_download_failed">下載失敗</string>
+    <string name="update_error_download_incomplete">下載未完成</string>
+    <string name="update_error_integrity">更新完整性驗證（SHA-256）失敗</string>
+</resources>
