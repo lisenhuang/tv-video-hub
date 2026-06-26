@@ -42,6 +42,17 @@
           </select>
         </label>
         <div id="db-d1" class="db-fields" hidden>
+          <details class="help" open>
+            <summary>How to get these from Cloudflare D1</summary>
+            <ol>
+              <li><b>Create the database.</b> Cloudflare dashboard → <b>Storage &amp; Databases → D1 SQL Database</b> → <b>Create</b>. Open it and copy its <b>Database ID</b> into the <i>D1 Database ID</i> field below.</li>
+              <li><b>Account ID.</b> Same dashboard — it's in the right-hand sidebar, or the hex in the URL <code>dash.cloudflare.com/&lt;account-id&gt;</code>. Paste it into <i>Account ID</i>.</li>
+              <li><b>API Token.</b> Top-right profile menu → <b>My Profile → API Tokens → Create Token → Create Custom Token</b>. Add the permission <b>Account › D1 › Edit</b>, save, and copy the token into <i>D1 API Token</i>.</li>
+              <li>Click <b>Test &amp; continue</b> — the backend creates its tables automatically on first connect.</li>
+            </ol>
+            <p class="muted">Prefer the CLI? <code>wrangler d1 create tv-video-hub</code> prints the database id. Object storage (Cloudflare R2) is set up later in Step 3.
+              <a href="https://developers.cloudflare.com/d1/get-started/" target="_blank" rel="noopener">D1 docs →</a></p>
+          </details>
           <label>Account ID
             <input id="db-account" name="accountId" type="text" />
           </label>
