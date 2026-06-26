@@ -184,6 +184,14 @@
 
         <div class="card">
           <h2>Catalog</h2>
+          <p id="catalog-ttl-note" class="info-note">
+            <span class="info-ico" aria-hidden="true">ℹ️</span>
+            <span>Playback links are short-lived presigned R2 URLs, valid for
+            <strong id="catalog-ttl-value">…</strong> from the moment the app or
+            browser requests a video — a fresh link is issued on every request, and
+            cached/downloaded videos keep playing after a link expires. Adjust it under
+            <b>Settings → Object storage → Presign TTL</b>.</span>
+          </p>
           <div class="table-wrap">
             <table id="videos-table">
               <thead>
@@ -333,7 +341,7 @@
     </div>
     <div class="player-body">
       <video id="player-video" class="player-video" controls playsinline preload="metadata"></video>
-      <p id="player-status" class="muted player-status" hidden></p>
+      <p id="player-status" class="muted player-status" hidden role="status" aria-live="polite"></p>
     </div>
   </dialog>
 

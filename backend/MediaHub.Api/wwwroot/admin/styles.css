@@ -152,6 +152,23 @@ body {
 .muted { color: var(--muted); }
 .hint { color: var(--muted); font-size: 12px; font-weight: 400; }
 
+/* Informational callout (e.g. how long playback links stay valid). */
+.info-note {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.info-note .info-ico { flex: 0 0 auto; line-height: 1.5; }
+.info-note strong { color: var(--primary); }
+
 /* Inline caption row inside a form label: field name + required marker + help icon. */
 .lbl { display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 .req { color: var(--danger); font-weight: 700; }
@@ -460,7 +477,9 @@ code {
 .player-body { padding: 0; }
 .player-video {
   width: 100%;
-  max-height: 70vh;
+  /* Cap height but always leave room for the dialog header on short/portrait
+     viewports (otherwise 70vh crowds the controls off-screen on phones). */
+  max-height: min(70vh, calc(100vh - 96px));
   background: #000;
   border-radius: 0 0 var(--radius) var(--radius);
 }
@@ -469,6 +488,7 @@ code {
    `[hidden]{display:none}`. */
 .player-video:not([hidden]) { display: block; }
 .player-status { padding: 16px; margin: 0; font-size: 14px; }
+.player-status.error { color: var(--danger); }
 
 /* ---- First-run help (collapsible guidance) ------------------------------ */
 .help {

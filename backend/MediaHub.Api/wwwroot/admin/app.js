@@ -85,6 +85,26 @@ function fmtDuration(sec) {
   return `${m}:${String(r).padStart(2, '0')}`;
 }
 
+// Render a presign-TTL (in minutes) as a human-friendly validity string, e.g.
+// 360 -> "6 hours (360 min)", 90 -> "90 min". Used for the Catalog info note.
+function fmtTtl(minutes) {
+  const m = Number(minutes);
+  if (!m || m <= 0) return 'a short time';
+  if (m % 60 === 0) {
+    const h = m / 60;
+    return `${h} hour${h === 1 ? '' : 's'} (${m} min)`;
+  }
+  return `${m} min`;
+}
+
+// Reflect the configured presign TTL in the Catalog section's info note so the
+// admin sees exactly how long playback links stay valid. Called whenever settings
+// load (the GET returns the effective value, default 360 min, even when unset).
+function updateCatalogTtl(minutes) {
+  const el = $('catalog-ttl-value');
+  if (el) el.textContent = fmtTtl(minutes);
+}
+
 function fmtBytes(n) {
   if (n == null) return '—';
   const units = ['B', 'KB', 'MB', 'GB'];
@@ -395,6 +415,10 @@ function uploadVideo(fd, onProgress) {
     });
     xhr.addEventListener('error', () => resolve({ ok: false, status: 0, data: null }));
     xhr.addEventListener('abort', () => resolve({ ok: false, status: 0, data: null }));
+    // Defensive: if a timeout is ever configured/fires, resolve as a failure so the
+    // form never hangs with the submit button stuck disabled. (No xhr.timeout cap is
+    // set, so legitimate large uploads on slow links aren't cut off.)
+    xhr.addEventListener('timeout', () => resolve({ ok: false, status: 0, data: null }));
 
     xhr.send(fd);
   });
@@ -496,7 +520,7 @@ function wirePlayer() {
   $('player-video').addEventListener('error', () => {
     // Most commonly an unsupported container/codec for this browser (e.g. MKV).
     if (!$('player-video').currentSrc) return; // no source set yet → ignore
-    playerStatus("This browser can't play this video format. Try downloading it instead.");
+    playerStatus("This browser can't play this video format. Try downloading it instead.", true);
   });
 }
 
@@ -505,15 +529,21 @@ function wirePlayer() {
 async function playVideo(id, title) {
   const dlg = $('player-dialog');
   const video = $('player-video');
-  $('player-title').textContent = title || 'Video';
+  const titleEl = $('player-title');
+  titleEl.textContent = title || 'Video';
+  titleEl.title = title || 'Video'; // hover tooltip when a long title is ellipsized
   playerStatus('Loading…');
   if (typeof dlg.showModal === 'function') dlg.showModal();
   else dlg.setAttribute('open', '');
 
   const { res, data } = await apiJson('/api/videos/' + encodeURIComponent(id), 'GET');
+  // The user may have closed the dialog while the URL was loading. Bail before
+  // setting src/playing — a <video> in a closed (display:none) <dialog> can still
+  // play AUDIO, and we'd be burning a short-lived presigned URL for nothing.
+  if (!dlg.open) return;
   if (res.status === 401) { closePlayer(); await refreshState(); return; }
   if (!res.ok || !data || !data.playbackUrl) {
-    playerStatus('Could not load this video for playback.');
+    playerStatus('Could not load this video for playback.', true);
     return;
   }
   playerStatus(null);
@@ -524,14 +554,16 @@ async function playVideo(id, title) {
   if (p && typeof p.catch === 'function') p.catch(() => { /* user can press play */ });
 }
 
-function playerStatus(message) {
+function playerStatus(message, isError) {
   const el = $('player-status');
   const video = $('player-video');
   if (message) {
     el.textContent = message;
+    el.classList.toggle('error', !!isError);
     el.hidden = false;
     show(video, false);
   } else {
+    el.classList.remove('error');
     el.hidden = true;
     show(video, true);
   }
@@ -687,6 +719,8 @@ function fillSettings(s) {
   $('s-ttl').value = s.storagePresignTtlMinutes || '';
   $('s-vbucket-local').value = s.storageVideoBucket || '';
   $('s-ttl-local').value = s.storagePresignTtlMinutes || '';
+  // Keep the Catalog info note in sync with the effective TTL.
+  updateCatalogTtl(s.storagePresignTtlMinutes);
   // S3-specific fields.
   $('s-serviceurl').value = s.storageServiceUrl || '';
   $('s-region').value = s.storageRegion || '';

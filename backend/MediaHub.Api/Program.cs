@@ -100,10 +100,20 @@ builder.Services
     });
 builder.Services.AddAuthorization();
 
-// Large uploads (videos / apks) via multipart.
+// Large uploads (videos / apks) via multipart. TWO independent limits must both
+// allow the upload, or the request is rejected:
+//   1. Kestrel's MaxRequestBodySize — the raw request body cap. Defaults to only
+//      ~28.6 MB (30,000,000 bytes); without raising it large videos fail with
+//      "Request body too large".
+//   2. FormOptions.MultipartBodyLengthLimit — the multipart form-body cap.
+// Keep them in sync so the binding limit is a predictable 2 GB.
+builder.WebHost.ConfigureKestrel(o =>
+{
+    o.Limits.MaxRequestBodySize = 2L * 1024 * 1024 * 1024; // 2 GB
+});
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
 {
-    o.MultipartBodyLengthLimit = 4L * 1024 * 1024 * 1024; // 4 GB
+    o.MultipartBodyLengthLimit = 2L * 1024 * 1024 * 1024; // 2 GB
 });
 
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
