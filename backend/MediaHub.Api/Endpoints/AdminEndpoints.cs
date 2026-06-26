@@ -212,17 +212,6 @@ public static class AdminEndpoints
             return deleted ? Results.NoContent() : Results.NotFound();
         });
 
-        // ---- Releases (auth, read-only) -------------------------------------
-
-        group.MapGet("/releases", async (AppReleaseRepository repo, CancellationToken ct) =>
-        {
-            var list = await repo.ListAsync(ct);
-            var dto = new AdminReleaseListDto(list.Select(r => new AdminReleaseDto(
-                r.VersionCode, r.VersionName, r.Notes ?? string.Empty, r.ObjectKey,
-                r.SizeBytes, r.Sha256, r.MinSdk, r.PublishedAt)).ToList());
-            return Results.Ok(dto);
-        }).RequireAuthorization();
-
         // ---- Settings: DB config (on disk) + storage/api key (in DB) (auth) -
 
         group.MapGet("/settings", async (

@@ -282,7 +282,7 @@ async function enterDashboard(username) {
     banner(`Next: configure ${what} below, then save.`, 'success');
   } else {
     selectTab('videos');
-    await Promise.all([loadVideos(), loadReleases()]);
+    await loadVideos();
   }
 }
 
@@ -296,7 +296,7 @@ function selectTab(name) {
   document.querySelectorAll('.tab').forEach((t) => {
     t.setAttribute('aria-selected', String(t.dataset.tab === name));
   });
-  ['videos', 'releases', 'settings'].forEach((n) => {
+  ['videos', 'settings'].forEach((n) => {
     show($('panel-' + n), n === name);
   });
 }
@@ -400,46 +400,6 @@ async function deleteVideo(id, title) {
   }
 }
 
-// ---- Releases --------------------------------------------------------------
-async function loadReleases() {
-  // Latest (public endpoint) — 204 means none yet.
-  const latestEl = $('latest-release');
-  try {
-    const r = await api('/api/app/latest');
-    if (r.status === 204) {
-      latestEl.textContent = 'No release published yet.';
-    } else if (r.ok) {
-      const l = await r.json();
-      latestEl.innerHTML = '';
-      addKv(latestEl, 'Version', `${l.versionName} (code ${l.versionCode})`);
-      addKv(latestEl, 'Size', fmtBytes(l.sizeBytes));
-      addKv(latestEl, 'min SDK', l.minSdk);
-      addKv(latestEl, 'Published', fmtDate(l.publishedAt));
-      if (l.notes) addKv(latestEl, 'Notes', l.notes);
-    }
-  } catch (_) {
-    latestEl.textContent = 'Could not load latest release.';
-  }
-
-  // Full list (admin endpoint).
-  const { res, data } = await apiJson('/api/admin/releases', 'GET');
-  if (res.status === 401) { await refreshState(); return; }
-  const tbody = $('releases-table').querySelector('tbody');
-  tbody.innerHTML = '';
-  if (res.status === 503) { show($('releases-empty'), true); return; }
-  const list = (data && data.releases) || [];
-  show($('releases-empty'), list.length === 0);
-  for (const r of list) {
-    const tr = document.createElement('tr');
-    tr.appendChild(td(String(r.versionCode)));
-    tr.appendChild(td(r.versionName));
-    tr.appendChild(td(fmtBytes(r.sizeBytes)));
-    tr.appendChild(td(String(r.minSdk)));
-    tr.appendChild(td(fmtDate(r.publishedAt)));
-    tbody.appendChild(tr);
-  }
-}
-
 // ---- Settings --------------------------------------------------------------
 const CONN_HELP = {
   sqlite: 'e.g. Data Source=App_Data/mediahub.db',
@@ -465,13 +425,26 @@ function wireSettings() {
   $('s-dbprovider').addEventListener('change', applyDbProvider);
   $('s-provider').addEventListener('change', applyStorageProvider);
 
+  // One-click Cloudflare R2 defaults: region=auto + the three toggles R2 requires.
+  // Only fills the R2-specific knobs; the endpoint, keys and buckets are still yours.
+  const r2Preset = $('s-r2-preset');
+  if (r2Preset) r2Preset.addEventListener('click', () => {
+    $('s-provider').value = 's3';
+    applyStorageProvider();
+    if (!$('s-region').value.trim()) $('s-region').value = 'auto';
+    $('s-forcepath').checked = true;
+    $('s-disablesign').checked = true;
+    $('s-checksum').checked = true;
+    banner('R2 defaults applied. Now fill in Service URL, Access keys & buckets, then Save settings.', 'success');
+  });
+
   $('settings-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const provider = $('s-provider').value === 'local' ? 'local' : 's3';
     const local = provider === 'local';
-    // Buckets + TTL are shared config keys; read from whichever provider's inputs are shown.
+    // Video bucket + TTL are shared config keys; read from whichever provider's inputs are shown.
+    // (APKs ship bundled in the backend image, so there is no APK bucket / release key here.)
     const videoBucket = local ? $('s-vbucket-local').value : $('s-vbucket').value;
-    const apkBucket = local ? $('s-abucket-local').value : $('s-abucket').value;
     const ttlRaw = local ? $('s-ttl-local').value : $('s-ttl').value;
     const body = {
       // Database (pluggable)
@@ -488,13 +461,10 @@ function wireSettings() {
       storageAccessKeyId: $('s-akid').value, // blank => unchanged
       storageSecretAccessKey: $('s-secret').value, // blank => unchanged
       storageVideoBucket: videoBucket,
-      storageApkBucket: apkBucket,
       storageForcePathStyle: $('s-forcepath').checked,
       storagePresignTtlMinutes: ttlRaw ? Number(ttlRaw) : null,
       storageDisablePayloadSigning: $('s-disablesign').checked,
       storageUseChecksumWhenRequired: $('s-checksum').checked,
-      // Release write secret
-      apiKey: $('s-apikey').value, // blank => unchanged
     };
     const { res, data } = await apiJson('/api/admin/settings', 'PUT', body);
     if (res.ok) {
@@ -560,12 +530,10 @@ function fillSettings(s) {
   $('s-provider').value = s.storageProvider === 'local' ? 'local' : 's3';
   applyStorageProvider();
   $('s-localpath').value = s.storageLocalBasePath || '';
-  // Buckets + TTL are shared keys; mirror into both the s3 and local inputs.
+  // Video bucket + TTL are shared keys; mirror into both the s3 and local inputs.
   $('s-vbucket').value = s.storageVideoBucket || '';
-  $('s-abucket').value = s.storageApkBucket || '';
   $('s-ttl').value = s.storagePresignTtlMinutes || '';
   $('s-vbucket-local').value = s.storageVideoBucket || '';
-  $('s-abucket-local').value = s.storageApkBucket || '';
   $('s-ttl-local').value = s.storagePresignTtlMinutes || '';
   // S3-specific fields.
   $('s-serviceurl').value = s.storageServiceUrl || '';
@@ -578,12 +546,10 @@ function fillSettings(s) {
   $('s-conn').value = '';
   $('s-akid').value = '';
   $('s-secret').value = '';
-  $('s-apikey').value = '';
   $('s-token-hint').textContent = secretHint(s.d1ApiToken);
   $('s-conn-hint').textContent = secretHint(s.databaseConnectionString);
   $('s-akid-hint').textContent = secretHint(s.storageAccessKeyId);
   $('s-secret-hint').textContent = secretHint(s.storageSecretAccessKey);
-  $('s-apikey-hint').textContent = secretHint(s.apiKey);
 }
 
 function secretHint(masked) {

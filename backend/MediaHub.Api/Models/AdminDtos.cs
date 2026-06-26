@@ -20,19 +20,6 @@ public sealed record ChangePasswordRequest(string? CurrentPassword, string? NewP
 
 public sealed record AdminIdentityDto(string Username);
 
-/// <summary>Admin view of a release (read-only list), reusing the public shape's fields.</summary>
-public sealed record AdminReleaseDto(
-    int VersionCode,
-    string VersionName,
-    string Notes,
-    string ObjectKey,
-    long SizeBytes,
-    string Sha256,
-    int MinSdk,
-    DateTimeOffset PublishedAt);
-
-public sealed record AdminReleaseListDto(IReadOnlyList<AdminReleaseDto> Releases);
-
 public sealed record AdminVideoListDto(IReadOnlyList<VideoSummaryDto> Videos);
 
 // ---- Settings ------------------------------------------------------------

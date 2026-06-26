@@ -12,8 +12,9 @@ on:
       - ".github/workflows/android-build.yml"
   workflow_dispatch:
 
-# Build the Android APK, then (on the default branch, when secrets are present)
-# publish it to the backend so installed apps can self-update.
+# Build the Android APK and (on the default branch) publish it to a GitHub Release at the
+# fixed URL .../releases/latest/download/tv-video-hub.apk. That link is what the backend's
+# GET /api/app/latest returns as `downloadUrl`, so installed apps self-update from GitHub.
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -27,9 +28,6 @@ jobs:
       KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-      # Publish target — set repo variable BACKEND_URL and secret RELEASE_API_KEY.
-      BACKEND_URL: ${{ vars.BACKEND_URL }}
-      RELEASE_API_KEY: ${{ secrets.RELEASE_API_KEY }}
       # Baked into BuildConfig as the first-run default base URL (repo variable).
       ORG_GRADLE_PROJECT_backendBaseUrl: ${{ vars.BACKEND_BASE_URL }}
     defaults:
@@ -89,16 +87,3 @@ jobs:
           name: TV Video Hub ${{ steps.apk.outputs.versionName }} (build ${{ steps.apk.outputs.versionCode }})
           files: ${{ runner.temp }}/tv-video-hub.apk
           fail_on_unmatched_files: true
-
-      # Publish to the backend release endpoint so the app's self-update can find it.
-      - name: Publish APK to backend
-        if: ${{ github.ref == 'refs/heads/main' && env.BACKEND_URL != '' && env.RELEASE_API_KEY != '' }}
-        run: |
-          curl -fsS -X POST "${BACKEND_URL%/}/api/app/releases" \
-            -H "X-Api-Key: $RELEASE_API_KEY" \
-            -F "apk=@${{ steps.apk.outputs.path }}" \
-            -F "versionCode=${{ steps.apk.outputs.versionCode }}" \
-            -F "versionName=${{ steps.apk.outputs.versionName }}" \
-            -F "minSdk=23" \
-            -F "notes=CI build ${GITHUB_SHA::7} from ${GITHUB_REF_NAME}"
-          echo "Published versionCode=${{ steps.apk.outputs.versionCode }} to backend."

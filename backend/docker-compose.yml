@@ -12,7 +12,7 @@ services:
     # 'sqlite' provider, the .db file also lives here.
     #
     # 💾 LOCAL DISK storage: the default media dir App_Data/media is already on this
-    # volume, so videos/APKs persist. Media can get large — consider a dedicated
+    # volume, so videos persist. Media can get large — consider a dedicated
     # mount instead, e.g.:  - mediahub_media:/app/App_Data/media
     volumes:
       - mediahub_data:/app/App_Data

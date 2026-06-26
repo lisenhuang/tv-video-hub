@@ -111,7 +111,6 @@
     <section id="dash-view" hidden>
       <nav class="tabs" role="tablist" aria-label="Sections">
         <button class="tab" role="tab" data-tab="videos" aria-selected="true">Videos</button>
-        <button class="tab" role="tab" data-tab="releases" aria-selected="false">Releases</button>
         <button class="tab" role="tab" data-tab="settings" aria-selected="false">Settings</button>
       </nav>
 
@@ -163,27 +162,6 @@
             </table>
           </div>
           <p id="videos-empty" class="muted" hidden>No videos yet.</p>
-        </div>
-      </div>
-
-      <!-- Releases -->
-      <div class="tab-panel" id="panel-releases" role="tabpanel" hidden>
-        <div class="card">
-          <h2>Latest release</h2>
-          <div id="latest-release" class="kv muted">Loading…</div>
-        </div>
-        <div class="card">
-          <h2>All releases</h2>
-          <p class="muted">Read-only. APKs are published by CI via <code>/api/app/releases</code>.</p>
-          <div class="table-wrap">
-            <table id="releases-table">
-              <thead>
-                <tr><th>Version</th><th>Name</th><th>Size</th><th>min SDK</th><th>Published</th></tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-          <p id="releases-empty" class="muted" hidden>No releases yet.</p>
         </div>
       </div>
 
@@ -241,23 +219,32 @@
                   <input id="s-localpath" name="storageLocalBasePath" type="text" placeholder="App_Data/media" />
                   <span class="hint">Files are served at <code>/api/media/…</code> via short-lived signed URLs (range-capable). Persist this directory (Docker volume).</span>
                 </label>
-                <div class="row">
-                  <label>Video bucket (subdirectory)
-                    <input id="s-vbucket-local" name="storageVideoBucketLocal" type="text" />
-                  </label>
-                  <label>APK bucket (subdirectory)
-                    <input id="s-abucket-local" name="storageApkBucketLocal" type="text" />
-                  </label>
-                </div>
+                <label>Video bucket (subdirectory)
+                  <input id="s-vbucket-local" name="storageVideoBucketLocal" type="text" />
+                </label>
                 <label>Signed-URL TTL (min)
                   <input id="s-ttl-local" name="storagePresignTtlMinutesLocal" type="number" min="1" />
                 </label>
               </div>
 
               <div id="s-s3-fields" class="storage-fields">
+                <details class="help" open>
+                  <summary>How to get these from Cloudflare R2</summary>
+                  <ol>
+                    <li><b>Create a bucket.</b> Cloudflare dashboard → <b>R2 Object Storage → Create bucket</b>. Copy the bucket name into <i>Video bucket</i> below (e.g. <code>tv-videos</code>).</li>
+                    <li><b>S3 endpoint &amp; region.</b> R2 → <b>Overview</b> (or a bucket → <b>Settings</b>) shows the <b>S3 API</b> URL <code>https://&lt;account-id&gt;.r2.cloudflarestorage.com</code>. Paste it into <i>Service URL</i> and set <i>Region</i> to <code>auto</code>.</li>
+                    <li><b>API token = access keys.</b> R2 → <b>Manage R2 API Tokens → Create API Token</b>. Permission <b>Object Read &amp; Write</b> (scope it to your bucket[s]). On creation Cloudflare shows an <b>Access Key ID</b> and <b>Secret Access Key</b> <u>once</u> — copy them into the matching fields here.</li>
+                    <li><b>R2 needs these toggles on:</b> <i>Force path-style addressing</i>, <i>Disable upload payload signing</i>, and <i>Checksums only when required</i>. Use the button below to set the region + all three at once.</li>
+                    <li>Click <b>Save settings</b>, then <b>Test connection</b> — it writes a tiny probe object to confirm the bucket is reachable. The app's playback URLs are short-lived presigned R2 URLs, so the bucket can stay private.</li>
+                  </ol>
+                  <p class="muted">
+                    <button type="button" id="s-r2-preset" class="btn ghost" style="margin:4px 0;">Use R2 defaults</button>
+                    <a href="https://developers.cloudflare.com/r2/api/s3/tokens/" target="_blank" rel="noopener">R2 S3 API tokens →</a>
+                  </p>
+                </details>
                 <div class="row">
                   <label>Service URL (S3 endpoint)
-                    <input id="s-serviceurl" name="storageServiceUrl" type="text" placeholder="empty = AWS regional endpoint" />
+                    <input id="s-serviceurl" name="storageServiceUrl" type="text" placeholder="https://<account-id>.r2.cloudflarestorage.com (R2)" />
                   </label>
                   <label>Region
                     <input id="s-region" name="storageRegion" type="text" placeholder="auto (R2) · us-east-1 (AWS)" />
@@ -271,14 +258,9 @@
                     <input id="s-secret" name="storageSecretAccessKey" type="password" placeholder="leave blank to keep" autocomplete="new-password" />
                   </label>
                 </div>
-                <div class="row">
-                  <label>Video bucket
-                    <input id="s-vbucket" name="storageVideoBucket" type="text" />
-                  </label>
-                  <label>APK bucket
-                    <input id="s-abucket" name="storageApkBucket" type="text" />
-                  </label>
-                </div>
+                <label>Video bucket
+                  <input id="s-vbucket" name="storageVideoBucket" type="text" />
+                </label>
                 <div class="row">
                   <label>Presign TTL (min)
                     <input id="s-ttl" name="storagePresignTtlMinutes" type="number" min="1" />
@@ -299,14 +281,6 @@
                   </label>
                 </div>
               </div>
-            </fieldset>
-
-            <fieldset class="group">
-              <legend>Release API key</legend>
-              <label>X-Api-Key secret <span id="s-apikey-hint" class="hint"></span>
-                <input id="s-apikey" name="apiKey" type="password" placeholder="leave blank to keep" autocomplete="new-password" />
-                <span class="hint">Required for CI to publish APKs via <code>POST /api/app/releases</code>.</span>
-              </label>
             </fieldset>
 
             <div class="actions">

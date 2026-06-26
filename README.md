@@ -6,15 +6,15 @@ Monorepo for a **private Android TV video playback app** and its **backend media
 tv-video-hub/
 ├── backend/          .NET 10 media service (ASP.NET Core minimal API)
 │                     · video catalog + playback URLs
-│                     · APK hosting + "is there a new version?" endpoint
-│                     · storage: S3-compatible (R2 / AWS S3 / MinIO / …) OR local disk
+│                     · "is there a new version?" endpoint (returns the APK download URL; APK hosted on GitHub)
+│                     · storage: S3-compatible (R2 / AWS S3 / MinIO / …) OR local disk (videos only)
 │                     · database: Cloudflare D1 OR self-hosted SQL (SQLite/Postgres/SQL Server)
 │                     · zero-env: configured via the /admin dashboard
 ├── android-tv/       Android TV app (Kotlin · Compose for TV · Media3/ExoPlayer)
 │                     · browses & plays videos from the backend
 │                     · self-updates by checking the backend version endpoint
 └── .github/workflows/
-    ├── android-build.yml   builds the APK and publishes it to the backend
+    ├── android-build.yml   builds the APK + publishes a GitHub Release (the self-update source)
     └── backend-build.yml    builds/tests the backend
 ```
 
@@ -28,13 +28,18 @@ agree on this contract** — if you change a field, change it in both `backend/`
 
 | source | link |
 |--------|------|
-| 📦 **GitHub release (latest CI build)** | **[`tv-video-hub.apk`](https://github.com/lisenhuang/tv-video-hub/releases/latest/download/tv-video-hub.apk)** |
-| 🌐 Your backend (fixed path) | `https://<your-backend>/api/app/latest.apk` (or `/api/app/download`) → always the latest signed APK |
+| 📦 **GitHub release (latest build)** | **[`tv-video-hub.apk`](https://github.com/lisenhuang/tv-video-hub/releases/latest/download/tv-video-hub.apk)** |
 
-> ⚠️ Signed with the repo's **public convenience keystore** (auto-build only, **not for
-> production** — see [`android-tv/README.md`](android-tv/README.md#-signing)). The GitHub link
-> appears once CI has published a release on `main`. Inside the app, launch checks
-> `GET /api/app/latest` and pops an **"Update available"** modal when a newer build exists.
+> ⚠️ Signed with the repo's **public convenience keystore** (**not for production** — see
+> [`android-tv/README.md`](android-tv/README.md#-signing)). The APK is **hosted on GitHub
+> Releases, not on the backend**. Inside the app, launch checks `GET /api/app/latest`; that
+> response carries the **download URL** for the newest APK (currently the GitHub release
+> above), and the app downloads it and pops an **"Update available"** modal when the
+> reported `versionCode` is newer.
+>
+> The download URL is **not hard-coded in the app** — it comes from the version-check API —
+> so the APK source can change (GitHub today, another host later) by editing the backend's
+> `AppRelease` config, with **no app update required**.
 
 ---
 
@@ -45,23 +50,22 @@ agree on this contract** — if you change a field, change it in both `backend/`
                  │  S3-compatible storage   │   │   Pluggable database     │
                  │  (R2 / AWS / MinIO / …)   │   │   D1 or SQL (SQLite/     │
                  │  · video files           │   │   Postgres/SQL Server)   │
-                 │  · apk files             │   │   · videos · app_releases│
+                 │                          │   │   · videos               │
                  └───────────▲──────────────┘   └──────────▲───────────────┘
                          │ S3 API / presign       │ D1 HTTP / EF Core
                  ┌───────┴───────────────────────┴──────────────┐
                  │           backend  (.NET 10, container)        │
                  │   GET  /api/videos          list catalog       │
                  │   GET  /api/videos/{id}     details + play URL  │
-                 │   GET  /api/app/latest      newest APK info     │
-                 │   GET  /api/app/download    redirect to APK     │
-                 │   POST /api/app/releases    CI uploads new APK  │  ◀── GitHub Actions
-                 │   POST /api/videos          admin adds a video  │
-                 └───────▲────────────────────────────────────────┘
-                         │ HTTPS / JSON
-                 ┌───────┴────────────────────────────────────────┐
-                 │            Android TV app                        │
-                 │   on launch → GET /api/app/latest → self-update  │
-                 │   browse    → GET /api/videos                    │
+                 │   GET  /api/app/latest      version + APK URL   │ ─┐ APK URL points to…
+                 │   POST /api/videos          admin adds a video  │  │
+                 └───────▲────────────────────────────────────────┘  │
+                         │ HTTPS / JSON                               ▼
+                 ┌───────┴────────────────────────────────────────┐  ┌─────────────────────┐
+                 │            Android TV app                        │  │  GitHub Releases    │
+                 │   on launch → GET /api/app/latest → self-update  │  │  (latest build APK) │
+                 │   downloads the APK from the URL it returns ─────┼─▶│  tv-video-hub.apk   │
+                 │   browse    → GET /api/videos                    │  └─────────────────────┘
                  │   play      → GET /api/videos/{id} → ExoPlayer   │
                  └─────────────────────────────────────────────────┘
 ```
@@ -182,49 +186,66 @@ app just streams the URL — no app change.
 // 404 if not found
 ```
 
+### App self-update flow
+
+The APK is **not hosted by the backend** — it lives on GitHub Releases (the "latest
+build"). On launch the app asks the backend "what's the newest version, and where do I get
+it?"; the backend answers with a `versionCode` and a **`downloadUrl`**, and the app
+downloads the APK straight from that URL. Because the URL comes from the API (not hard-coded
+in the app), you can move the APK to a different host later by editing the backend's
+`AppRelease` config — **no app update needed**.
+
+```text
+App self-update (runs on every launch)
+
+  ┌───────────────┐                ┌────────────────────┐          ┌──────────────────────┐
+  │ Android TV app│                │   backend (.NET)   │          │   GitHub Releases    │
+  └───────┬───────┘                └─────────┬──────────┘          └──────────┬───────────┘
+          │                                  │                                │
+          │ 1. GET /api/app/latest           │                                │
+          │ ─────────────────────────────────▶│  reads the AppRelease config   │
+          │   200 { versionCode, sha256,     │  (versionCode, sha256,         │
+          │         downloadUrl }             │   downloadUrl → GitHub)        │
+          │ ◀─────────────────────────────────│                                │
+          │   (204 if nothing is published)  │                                │
+          │ 2. versionCode > installed ?     │                                │
+          │      • no  → up to date, stop     │                                │
+          │      • yes → "Update available"   │                                │
+          │                                  │                                │
+          │ 3. download `downloadUrl` (the APK) ───────────────────────────────▶│
+          │ ◀──────────────────────────── APK bytes ────────────────────────────│
+          │                                  │                                │
+          │ 4. verify sha256, then launch    │                                │
+          │    the Android package installer │                                │
+          ▼                                  │                                │
+```
+
 ### `GET /api/app/latest`
-The newest published APK. The app calls this on launch and compares `versionCode`
-to its own `BuildConfig.VERSION_CODE`.
+The newest APK's metadata. The app calls this on launch, compares `versionCode` to its own
+`BuildConfig.VERSION_CODE`, and if newer downloads `downloadUrl` and verifies `sha256`.
+The APK itself is hosted elsewhere (GitHub Releases) — this endpoint only points at it.
 
 ```jsonc
 // 200
 {
-  "versionCode": 12,                 // monotonic integer; app updates if this > installed
-  "versionName": "1.3.0",
-  "notes": "Bug fixes",              // changelog, may be empty
-  "downloadUrl": "https://…/api/app/download?versionCode=12",
-  "sizeBytes": 8123456,
+  "versionCode": 1,                  // monotonic integer; app updates if this > installed
+  "versionName": "1.0.0",
+  "notes": "",                       // changelog, may be empty
+  "downloadUrl": "https://github.com/<owner>/<repo>/releases/latest/download/tv-video-hub.apk",
+  "sizeBytes": 0,                    // optional, informational
   "sha256": "…",                     // hex digest of the apk, for integrity check
   "minSdk": 23,
   "publishedAt": "2026-06-26T09:00:00Z"
 }
-// 204 if no release has been published yet
+// 204 if no release is configured (AppRelease.VersionCode <= 0 or downloadUrl blank)
 ```
 
-### `GET /api/app/download?versionCode={code}`
-Returns the APK bytes. Implemented as a `302` redirect to a short-lived presigned
-object-storage URL (`Content-Type: application/vnd.android.package-archive`). If
-`versionCode` is omitted, the latest is served.
-
-### `GET /api/app/latest.apk`
-Fixed-path alias for "download the latest APK" — same `302` to the latest signed APK
-as `/api/app/download` with no `versionCode`. A stable URL you can share/bookmark.
-
-### `POST /api/app/releases`   *(auth: `X-Api-Key`)*
-Called by CI after a successful Android build to publish a new APK. Accepts
-`multipart/form-data`:
-
-| field         | type   | notes                                  |
-|---------------|--------|----------------------------------------|
-| `apk`         | file   | the built `.apk`                       |
-| `versionCode` | int    | from `app/build.gradle.kts`            |
-| `versionName` | string |                                        |
-| `notes`       | string | optional changelog                     |
-| `minSdk`      | int    | optional (default 23)                  |
-
-The backend stores the file in R2, records a row in D1, computes the SHA-256, and
-returns the stored release (same shape as `/api/app/latest`). Re-posting an existing
-`versionCode` replaces it.
+All of these fields come from the backend's **`AppRelease` config section** (appsettings /
+env — see [`backend/MediaHub.Api/appsettings.json`](backend/MediaHub.Api/appsettings.json)).
+`downloadUrl` defaults to the GitHub "latest" release asset; point it anywhere else to
+change the APK source without touching the app. Bump `versionCode` **and** `sha256` here
+whenever you publish a new APK (the app verifies the download's hash; a stale `sha256`
+fails the install). There is no object storage, DB release row, or upload endpoint.
 
 ### `POST /api/videos`   *(auth: `X-Api-Key`)*
 Register a video. Either upload bytes (`multipart/form-data` with a `file` part) or
@@ -274,6 +295,8 @@ See [`android-tv/README.md`](android-tv/README.md).
 
 ## Status
 
-This is a working scaffold with real implementations on both sides. It is built and
-tested in CI (no .NET SDK / Android SDK is required locally to read or review it).
+This is a working scaffold with real implementations on both sides. The backend is built
+and tested in CI; the Android APK is published to GitHub Releases and the backend's
+version-check endpoint just hands the app its download URL. No .NET / Android SDK is
+required locally to read or review the code.
 See each subproject's README for how to run it.

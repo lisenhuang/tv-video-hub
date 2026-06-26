@@ -20,6 +20,9 @@ builder.Services.Configure<DatabaseOptions>(
     builder.Configuration.GetSection(DatabaseOptions.SectionName));
 builder.Services.Configure<SettingsOptions>(
     builder.Configuration.GetSection(SettingsOptions.SectionName));
+// APK self-update metadata (the APK is hosted on GitHub Releases, not here).
+builder.Services.Configure<AppReleaseOptions>(
+    builder.Configuration.GetSection(AppReleaseOptions.SectionName));
 
 // ---- JSON: camelCase, ignore nulls, enums as strings --------------------
 builder.Services.ConfigureHttpJsonOptions(o =>
