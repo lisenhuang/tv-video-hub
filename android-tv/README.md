@@ -3,7 +3,7 @@
 Single APK for **Android TV + phones/tablets**. Browse & play backend videos, cache/download
 for offline, and self-update. Kotlin · Compose for TV · Media3/ExoPlayer.
 
-> 🛠️ No Android SDK needed to read this. Built in CI — Gradle 8.7 · JDK 21 · AGP 8.7 · Kotlin 2.0.
+> 🛠️ No Android SDK needed to read this. Built in CI — Gradle 8.11 · JDK 21 · AGP 8.7 · Kotlin 2.0.
 
 ```
 launch ─▶ base URL set? ──no─▶ 🧩 Setup screen
@@ -76,7 +76,7 @@ The repo link also appears in the root README so visitors can click-download it.
 
 ```sh
 cd android-tv
-gradle wrapper --gradle-version 8.7          # generates ./gradlew (not committed)
+gradle wrapper --gradle-version 8.11.1          # generates ./gradlew (not committed)
 ./gradlew :app:assembleRelease -PbackendBaseUrl=https://media.your-host
 adb install -r app/build/outputs/apk/release/app-release.apk
 ```
