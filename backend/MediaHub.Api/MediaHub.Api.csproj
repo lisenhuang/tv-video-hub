@@ -9,9 +9,20 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- R2 is S3-compatible; the AWS SDK speaks to it directly. -->
+    <!-- S3-compatible object storage; the AWS SDK speaks to R2/AWS/MinIO/B2 directly. -->
     <PackageReference Include="AWSSDK.S3" Version="3.7.421.10" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.9" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Pluggable database. Cloudflare D1 uses the D1 HTTP API (no package). The
+         self-hosted SQL providers use EF Core 10. NOTE: Pomelo (MySQL) has no EF
+         Core 10 build yet, so MySQL is selectable but its provider is not bundled
+         (see EfContextFactory); add a compatible Pomelo build to enable it. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.9" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.2" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.9" />
   </ItemGroup>
 
 </Project>

@@ -28,19 +28,17 @@ public static class AppEndpoints
             return Results.Ok(ToDto(latest, http));
         });
 
-        // GET /api/app/download?versionCode=N — 302 to a presigned R2 URL.
+        // GET /api/app/download?versionCode=N — 302 to a presigned APK URL
+        // (latest if versionCode is omitted).
         group.MapGet("/download", async (
             int? versionCode, AppReleaseRepository repo, S3Storage r2, CancellationToken ct) =>
-        {
-            var release = versionCode is { } vc
-                ? await repo.GetByVersionAsync(vc, ct)
-                : await repo.GetLatestAsync(ct);
-            if (release is null) return Results.NotFound();
+            await RedirectToApkAsync(versionCode, repo, r2, ct));
 
-            var (url, _) = r2.GetPresignedGetUrl(
-                r2.ApkBucket, release.ObjectKey, responseContentType: ApkContentType);
-            return Results.Redirect(url);
-        });
+        // GET /api/app/latest.apk — fixed-path alias that 302s to the latest APK.
+        // Same logic as /download with no versionCode; a stable URL for the latest build.
+        group.MapGet("/latest.apk", async (
+            AppReleaseRepository repo, S3Storage r2, CancellationToken ct) =>
+            await RedirectToApkAsync(null, repo, r2, ct));
 
         // POST /api/app/releases — CI publishes a build (multipart). Requires X-Api-Key.
         group.MapPost("/releases", PublishReleaseAsync)
@@ -48,6 +46,19 @@ public static class AppEndpoints
             .DisableAntiforgery();
 
         return app;
+    }
+
+    private static async Task<IResult> RedirectToApkAsync(
+        int? versionCode, AppReleaseRepository repo, S3Storage r2, CancellationToken ct)
+    {
+        var release = versionCode is { } vc
+            ? await repo.GetByVersionAsync(vc, ct)
+            : await repo.GetLatestAsync(ct);
+        if (release is null) return Results.NotFound();
+
+        var (url, _) = r2.GetPresignedGetUrl(
+            r2.ApkBucket, release.ObjectKey, responseContentType: ApkContentType);
+        return Results.Redirect(url);
     }
 
     private static async Task<IResult> PublishReleaseAsync(

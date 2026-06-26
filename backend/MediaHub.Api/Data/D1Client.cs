@@ -33,10 +33,10 @@ public sealed class D1Client
         _log = log;
     }
 
-    private static string BuildQueryUri(EffectiveCloudflareConfig cf) =>
+    private static string BuildQueryUri(EffectiveDatabaseConfig cf) =>
         $"{cf.D1ApiBaseUrl.TrimEnd('/')}/accounts/{cf.AccountId}/d1/database/{cf.D1DatabaseId}/query";
 
-    private static HttpRequestMessage BuildRequest(EffectiveCloudflareConfig cf, D1QueryRequest payload)
+    private static HttpRequestMessage BuildRequest(EffectiveDatabaseConfig cf, D1QueryRequest payload)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, BuildQueryUri(cf))
         {
@@ -50,7 +50,7 @@ public sealed class D1Client
     public async Task<IReadOnlyList<D1Row>> QueryAsync(
         string sql, IReadOnlyList<object?>? parameters = null, CancellationToken ct = default)
     {
-        var cf = _settings.Cloudflare;
+        var cf = _settings.Database;
         var payload = new D1QueryRequest(sql, NormalizeParams(parameters));
 
         using var request = BuildRequest(cf, payload);
@@ -74,7 +74,7 @@ public sealed class D1Client
     public async Task<long> ExecuteAsync(
         string sql, IReadOnlyList<object?>? parameters = null, CancellationToken ct = default)
     {
-        var cf = _settings.Cloudflare;
+        var cf = _settings.Database;
         var payload = new D1QueryRequest(sql, NormalizeParams(parameters));
 
         using var request = BuildRequest(cf, payload);

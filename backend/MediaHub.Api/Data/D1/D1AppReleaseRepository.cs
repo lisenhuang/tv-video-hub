@@ -1,8 +1,9 @@
 using MediaHub.Api.Models;
 
-namespace MediaHub.Api.Data;
+namespace MediaHub.Api.Data.D1;
 
-public sealed class AppReleaseRepository(D1Client d1)
+/// <summary>Cloudflare D1 (HTTP query API) implementation of <see cref="IAppReleaseRepository"/>.</summary>
+public sealed class D1AppReleaseRepository(D1Client d1) : IAppReleaseRepository
 {
     public async Task<IReadOnlyList<AppRelease>> ListAsync(CancellationToken ct = default)
     {

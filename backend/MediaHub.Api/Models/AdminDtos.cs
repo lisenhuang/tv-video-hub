@@ -2,7 +2,17 @@ namespace MediaHub.Api.Models;
 
 // DTOs for the admin dashboard API. Serialized camelCase (configured globally).
 
-public sealed record SetupStateDto(bool NeedsSetup, bool Authenticated);
+/// <summary>
+/// First-run wizard state. <c>needsAdmin</c> → create the local admin; then after
+/// login <c>needsDatabase</c>/<c>needsStorage</c> drive the rest of setup.
+/// <c>needsSetup</c> is kept (== needsAdmin) for backward-compatible clients.
+/// </summary>
+public sealed record SetupStateDto(
+    bool NeedsSetup,
+    bool NeedsAdmin,
+    bool Authenticated,
+    bool NeedsDatabase,
+    bool NeedsStorage);
 
 public sealed record CredentialsRequest(string? Username, string? Password);
 
@@ -32,14 +42,17 @@ public sealed record AdminVideoListDto(IReadOnlyList<VideoSummaryDto> Videos);
 public sealed record MaskedSecretDto(bool IsSet, string? Last4);
 
 /// <summary>
-/// Current effective config with secrets masked. Two groups: Cloudflare D1
-/// (database) and the provider-agnostic S3-compatible object storage.
+/// Current effective config with secrets masked. Three groups: pluggable database
+/// (D1 or self-hosted SQL), S3-compatible object storage, and the release API key.
 /// </summary>
 public sealed record SettingsViewDto(
-    // Database (Cloudflare D1)
+    // Database (pluggable)
+    string DatabaseProvider,
     string AccountId,
     string D1DatabaseId,
     MaskedSecretDto D1ApiToken,
+    MaskedSecretDto DatabaseConnectionString,
+    bool DatabaseConfigured,
     // Object storage (S3-compatible)
     string StorageServiceUrl,
     string StorageRegion,
@@ -50,19 +63,23 @@ public sealed record SettingsViewDto(
     bool StorageForcePathStyle,
     int StoragePresignTtlMinutes,
     bool StorageDisablePayloadSigning,
-    bool StorageUseChecksumWhenRequired);
+    bool StorageUseChecksumWhenRequired,
+    bool StorageConfigured,
+    // Release write secret
+    MaskedSecretDto ApiKey);
 
 /// <summary>
 /// Editable settings payload. Blank/absent secret fields mean "leave unchanged".
-/// Non-secret string fields are applied as given (blank clears the override →
-/// falls back to the env/appsettings default). Nullable bool/int fields left null
-/// mean "leave unchanged".
+/// Non-secret string fields are applied as given (blank clears the value). Nullable
+/// bool/int fields left null mean "leave unchanged".
 /// </summary>
 public sealed record SettingsUpdateRequest(
-    // Database (Cloudflare D1)
+    // Database (pluggable)
+    string? DatabaseProvider,
     string? AccountId,
     string? D1DatabaseId,
     string? D1ApiToken,
+    string? DatabaseConnectionString,
     // Object storage (S3-compatible)
     string? StorageServiceUrl,
     string? StorageRegion,
@@ -73,8 +90,10 @@ public sealed record SettingsUpdateRequest(
     bool? StorageForcePathStyle,
     int? StoragePresignTtlMinutes,
     bool? StorageDisablePayloadSigning,
-    bool? StorageUseChecksumWhenRequired);
+    bool? StorageUseChecksumWhenRequired,
+    // Release write secret
+    string? ApiKey);
 
 public sealed record ConnectionResultDto(bool Ok, string Message);
 
-public sealed record SettingsTestDto(ConnectionResultDto D1, ConnectionResultDto Storage);
+public sealed record SettingsTestDto(ConnectionResultDto Database, ConnectionResultDto Storage);

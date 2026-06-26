@@ -117,12 +117,16 @@ async function init() {
   await refreshState();
 }
 
+let lastSetupState = null;
+
 async function refreshState() {
   banner('');
   try {
     const { res, data } = await apiJson('/api/admin/setup-state', 'GET');
     if (!res.ok) throw new Error('Could not reach the server.');
-    if (data.needsSetup) {
+    lastSetupState = data;
+    // needsAdmin (with needsSetup kept as a back-compat alias).
+    if (data.needsAdmin || data.needsSetup) {
       setAuthedChrome(false);
       showView('setup');
     } else if (data.authenticated) {
@@ -197,8 +201,24 @@ async function enterDashboard(username) {
   }
   setAuthedChrome(true, username);
   showView('dash');
-  selectTab('videos');
-  await Promise.all([loadVideos(), loadReleases(), loadSettings()]);
+
+  // Refresh setup-state so we can guide first-run configuration.
+  const { res, data } = await apiJson('/api/admin/setup-state', 'GET');
+  if (res.ok) lastSetupState = data;
+
+  await loadSettings();
+
+  const needsDb = lastSetupState && lastSetupState.needsDatabase;
+  const needsStorage = lastSetupState && lastSetupState.needsStorage;
+  if (needsDb || needsStorage) {
+    selectTab('settings');
+    const what = [needsDb ? 'a database' : null, needsStorage ? 'object storage' : null]
+      .filter(Boolean).join(' and ');
+    banner(`Next: configure ${what} below, then save.`, 'success');
+  } else {
+    selectTab('videos');
+    await Promise.all([loadVideos(), loadReleases()]);
+  }
 }
 
 function wireTabs() {
@@ -278,6 +298,12 @@ async function loadVideos() {
   if (res.status === 401) { await refreshState(); return; }
   const tbody = $('videos-table').querySelector('tbody');
   tbody.innerHTML = '';
+  if (res.status === 503) {
+    // Database not configured yet — guide the user to settings.
+    show($('videos-empty'), false);
+    banner((data && data.error) || 'Configure the database in Settings first.', 'error');
+    return;
+  }
   const list = (data && data.videos) || [];
   show($('videos-empty'), list.length === 0);
   for (const v of list) {
@@ -335,6 +361,7 @@ async function loadReleases() {
   if (res.status === 401) { await refreshState(); return; }
   const tbody = $('releases-table').querySelector('tbody');
   tbody.innerHTML = '';
+  if (res.status === 503) { show($('releases-empty'), true); return; }
   const list = (data && data.releases) || [];
   show($('releases-empty'), list.length === 0);
   for (const r of list) {
@@ -349,14 +376,32 @@ async function loadReleases() {
 }
 
 // ---- Settings --------------------------------------------------------------
+const CONN_HELP = {
+  sqlite: 'e.g. Data Source=App_Data/mediahub.db',
+  postgres: 'e.g. Host=localhost;Database=mediahub;Username=postgres;Password=…',
+  mysql: 'e.g. Server=localhost;Database=mediahub;User=root;Password=… (provider not bundled — see README)',
+  sqlserver: 'e.g. Server=localhost;Database=mediahub;User Id=sa;Password=…;TrustServerCertificate=true',
+};
+
+function applyDbProvider() {
+  const p = $('s-dbprovider').value;
+  show($('s-db-d1'), p === 'd1');
+  show($('s-db-sql'), p === 'sqlite' || p === 'postgres' || p === 'mysql' || p === 'sqlserver');
+  $('s-conn-help').textContent = CONN_HELP[p] || '';
+}
+
 function wireSettings() {
+  $('s-dbprovider').addEventListener('change', applyDbProvider);
+
   $('settings-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const body = {
-      // Database (Cloudflare D1)
+      // Database (pluggable)
+      databaseProvider: $('s-dbprovider').value,
       accountId: $('s-account').value,
       d1DatabaseId: $('s-dbid').value,
-      d1ApiToken: $('s-token').value, // blank => unchanged (server-side)
+      d1ApiToken: $('s-token').value, // blank => unchanged
+      databaseConnectionString: $('s-conn').value, // blank => unchanged
       // Object storage (S3-compatible)
       storageServiceUrl: $('s-serviceurl').value,
       storageRegion: $('s-region').value,
@@ -368,11 +413,16 @@ function wireSettings() {
       storagePresignTtlMinutes: $('s-ttl').value ? Number($('s-ttl').value) : null,
       storageDisablePayloadSigning: $('s-disablesign').checked,
       storageUseChecksumWhenRequired: $('s-checksum').checked,
+      // Release write secret
+      apiKey: $('s-apikey').value, // blank => unchanged
     };
     const { res, data } = await apiJson('/api/admin/settings', 'PUT', body);
     if (res.ok) {
       banner('Settings saved.', 'success');
       fillSettings(data);
+      // Reflect any newly-satisfied setup requirements.
+      const st = await apiJson('/api/admin/setup-state', 'GET');
+      if (st.res.ok) lastSetupState = st.data;
     } else if (res.status === 401) {
       await refreshState();
     } else {
@@ -390,7 +440,7 @@ function wireSettings() {
       const { res, data } = await apiJson('/api/admin/settings/test', 'POST');
       if (res.status === 401) { await refreshState(); return; }
       out.innerHTML = '';
-      out.appendChild(testLine('Database (D1)', data.d1));
+      out.appendChild(testLine('Database', data.database));
       out.appendChild(testLine('Object storage', data.storage));
     } catch (_) {
       out.innerHTML = '<div class="banner error">Test request failed.</div>';
@@ -420,9 +470,12 @@ async function loadSettings() {
 
 function fillSettings(s) {
   if (!s) return;
-  // Database (Cloudflare D1)
+  // Database (pluggable)
+  $('s-dbprovider').value = s.databaseProvider || '';
   $('s-account').value = s.accountId || '';
   $('s-dbid').value = s.d1DatabaseId || '';
+  applyDbProvider();
+  $('s-db-status').textContent = s.databaseConfigured ? '✓ configured' : '(not configured)';
   // Object storage (S3-compatible)
   $('s-serviceurl').value = s.storageServiceUrl || '';
   $('s-region').value = s.storageRegion || '';
@@ -434,11 +487,15 @@ function fillSettings(s) {
   $('s-checksum').checked = !!s.storageUseChecksumWhenRequired;
   // Secrets: never populated; show a hint about the stored value, keep field blank.
   $('s-token').value = '';
+  $('s-conn').value = '';
   $('s-akid').value = '';
   $('s-secret').value = '';
+  $('s-apikey').value = '';
   $('s-token-hint').textContent = secretHint(s.d1ApiToken);
+  $('s-conn-hint').textContent = secretHint(s.databaseConnectionString);
   $('s-akid-hint').textContent = secretHint(s.storageAccessKeyId);
   $('s-secret-hint').textContent = secretHint(s.storageSecretAccessKey);
+  $('s-apikey-hint').textContent = secretHint(s.apiKey);
 }
 
 function secretHint(masked) {

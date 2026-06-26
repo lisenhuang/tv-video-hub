@@ -235,6 +235,9 @@ fieldset.group legend {
 }
 .checkbox input { width: auto; flex: none; }
 
+/* Provider-conditional database fields */
+.db-fields { display: flex; flex-direction: column; gap: 14px; }
+
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
 /* ---- Buttons ------------------------------------------------------------ */

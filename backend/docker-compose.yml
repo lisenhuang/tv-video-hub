@@ -5,27 +5,28 @@ services:
       - "8080:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Production
-      # Provide these via a .env file or your orchestrator's secret store.
-      # Database: Cloudflare D1
-      Cloudflare__AccountId: ${CF_ACCOUNT_ID}
-      Cloudflare__D1__DatabaseId: ${CF_D1_DATABASE_ID}
-      Cloudflare__D1__ApiToken: ${CF_D1_API_TOKEN}
-      # Object storage: any S3-compatible store (R2 / AWS S3 / MinIO / B2 / ...)
-      Storage__ServiceUrl: ${STORAGE_SERVICE_URL}
-      Storage__Region: ${STORAGE_REGION:-auto}
-      Storage__AccessKeyId: ${STORAGE_ACCESS_KEY_ID}
-      Storage__SecretAccessKey: ${STORAGE_SECRET_ACCESS_KEY}
-      Storage__VideoBucket: ${STORAGE_VIDEO_BUCKET:-videos}
-      Storage__ApkBucket: ${STORAGE_APK_BUCKET:-apks}
-      Storage__ForcePathStyle: ${STORAGE_FORCE_PATH_STYLE:-true}
-      Api__Key: ${API_KEY}
+    # No env is REQUIRED — the app boots with zero config and is set up at /admin.
+    # The local settings file (admin account + DB/storage/api config, and a SQLite DB
+    # if you pick sqlite) lives under /app/App_Data, so persist it with a volume:
+    volumes:
+      - mediahub_data:/app/App_Data
     restart: unless-stopped
-    # The admin account lives in D1 (survives rebuilds). Only dashboard-set
-    # Cloudflare *overrides* are stored on disk under /app/App_Data; without a
-    # volume they reset on rebuild and the app falls back to the env vars above.
-    # Uncomment to persist dashboard-set overrides across rebuilds:
-    # volumes:
-    #   - mediahub_data:/app/App_Data
 
-# volumes:
-#   mediahub_data:
+    # OPTIONAL: pre-seed config via env instead of the dashboard. Uncomment as needed.
+    #   environment:
+    #     Database__Provider: ${DATABASE_PROVIDER}            # d1 | sqlite | postgres | mysql | sqlserver
+    #     Database__ConnectionString: ${DATABASE_CONNECTION_STRING}
+    #     Cloudflare__AccountId: ${CF_ACCOUNT_ID}             # D1 only
+    #     Cloudflare__D1__DatabaseId: ${CF_D1_DATABASE_ID}
+    #     Cloudflare__D1__ApiToken: ${CF_D1_API_TOKEN}
+    #     Storage__ServiceUrl: ${STORAGE_SERVICE_URL}
+    #     Storage__Region: ${STORAGE_REGION:-auto}
+    #     Storage__AccessKeyId: ${STORAGE_ACCESS_KEY_ID}
+    #     Storage__SecretAccessKey: ${STORAGE_SECRET_ACCESS_KEY}
+    #     Storage__VideoBucket: ${STORAGE_VIDEO_BUCKET:-videos}
+    #     Storage__ApkBucket: ${STORAGE_APK_BUCKET:-apks}
+    #     Storage__ForcePathStyle: ${STORAGE_FORCE_PATH_STYLE:-true}
+    #     Api__Key: ${API_KEY}
+
+volumes:
+  mediahub_data:

@@ -12,8 +12,9 @@ namespace MediaHub.Api.Endpoints;
 /// <summary>
 /// Cookie-authenticated admin dashboard API under <c>/api/admin</c>. This is an
 /// ADDITIONAL auth path; it does not touch the public endpoints or the X-Api-Key
-/// write path. Single-admin model: setup creates exactly one admin, after which
-/// setup is permanently rejected (409).
+/// write path. The admin account is stored locally (no database needed) so the very
+/// first run works with zero config. Single-admin model: setup creates exactly one
+/// admin, after which setup is rejected (409).
 /// </summary>
 public static class AdminEndpoints
 {
@@ -23,66 +24,52 @@ public static class AdminEndpoints
 
         // ---- Auth lifecycle --------------------------------------------------
 
-        // GET /api/admin/setup-state — public.
-        group.MapGet("/setup-state", async (HttpContext http, AdminRepository admins, CancellationToken ct) =>
+        // GET /api/admin/setup-state — public. Drives the first-run wizard.
+        group.MapGet("/setup-state", (HttpContext http, AdminRepository admins, SettingsProvider settings) =>
         {
-            var count = await admins.CountAsync(ct);
+            var needsAdmin = !admins.Exists();
             var authed = http.User.Identity?.IsAuthenticated == true;
-            return Results.Ok(new SetupStateDto(NeedsSetup: count == 0, Authenticated: authed));
+            return Results.Ok(new SetupStateDto(
+                NeedsSetup: needsAdmin,
+                NeedsAdmin: needsAdmin,
+                Authenticated: authed,
+                NeedsDatabase: !settings.Database.IsConfigured,
+                NeedsStorage: !StorageConfigured(settings.Storage)));
         });
 
         // POST /api/admin/setup — public, but only succeeds when no admin exists.
         group.MapPost("/setup", async (
             CredentialsRequest body, HttpContext http,
-            AdminRepository admins, PasswordHasher hasher, CancellationToken ct) =>
+            AdminRepository admins, PasswordHasher hasher) =>
         {
             var username = body.Username?.Trim();
             if (string.IsNullOrWhiteSpace(username) || string.IsNullOrEmpty(body.Password))
                 return Results.BadRequest(new { error = "username and password are required." });
 
-            // The single-admin guard: once any admin exists, setup is closed forever.
-            if (await admins.CountAsync(ct) > 0)
-                return Results.Conflict(new { error = "an admin already exists; setup is closed." });
-
             var (hash, salt) = hasher.Hash(body.Password);
-            var admin = new Admin
-            {
-                Id = Guid.NewGuid().ToString("n"),
-                Username = username,
-                PasswordHash = hash,
-                PasswordSalt = salt,
-                CreatedAt = DateTimeOffset.UtcNow,
-            };
-
-            try
-            {
-                await admins.InsertAsync(admin, ct);
-            }
-            catch (D1Exception)
-            {
-                // Most likely a race on the UNIQUE(username) constraint — treat as conflict.
+            if (!admins.TryCreate(username, hash, salt))
                 return Results.Conflict(new { error = "an admin already exists; setup is closed." });
-            }
 
-            await SignInAsync(http, admin.Username);
-            return Results.Ok(new AdminIdentityDto(admin.Username));
+            await SignInAsync(http, username);
+            return Results.Ok(new AdminIdentityDto(username));
         });
 
         // POST /api/admin/login — public.
         group.MapPost("/login", async (
             CredentialsRequest body, HttpContext http,
-            AdminRepository admins, PasswordHasher hasher, CancellationToken ct) =>
+            AdminRepository admins, PasswordHasher hasher) =>
         {
             var username = body.Username?.Trim();
             if (string.IsNullOrWhiteSpace(username) || string.IsNullOrEmpty(body.Password))
-                return Results.Json(new { error = "invalid credentials." }, statusCode: StatusCodes.Status401Unauthorized);
+                return Unauthorized();
 
-            var admin = await admins.GetByUsernameAsync(username, ct);
-            if (admin is null || !hasher.Verify(body.Password, admin.PasswordHash, admin.PasswordSalt))
-                return Results.Json(new { error = "invalid credentials." }, statusCode: StatusCodes.Status401Unauthorized);
+            var admin = admins.GetByUsername(username);
+            if (admin is null
+                || !hasher.Verify(body.Password, admin.PasswordHash ?? "", admin.PasswordSalt ?? ""))
+                return Unauthorized();
 
-            await SignInAsync(http, admin.Username);
-            return Results.Ok(new AdminIdentityDto(admin.Username));
+            await SignInAsync(http, username);
+            return Results.Ok(new AdminIdentityDto(username));
         });
 
         // POST /api/admin/logout — auth.
@@ -99,22 +86,22 @@ public static class AdminEndpoints
 
         // POST /api/admin/change-password — auth. Changes the existing admin's
         // password only; never creates a new admin.
-        group.MapPost("/change-password", async (
+        group.MapPost("/change-password", (
             ChangePasswordRequest body, HttpContext http,
-            AdminRepository admins, PasswordHasher hasher, CancellationToken ct) =>
+            AdminRepository admins, PasswordHasher hasher) =>
         {
             var username = http.User.Identity?.Name;
-            if (string.IsNullOrEmpty(username))
-                return Results.Unauthorized();
+            if (string.IsNullOrEmpty(username)) return Results.Unauthorized();
             if (string.IsNullOrEmpty(body.CurrentPassword) || string.IsNullOrEmpty(body.NewPassword))
                 return Results.BadRequest(new { error = "currentPassword and newPassword are required." });
 
-            var admin = await admins.GetByUsernameAsync(username, ct);
-            if (admin is null || !hasher.Verify(body.CurrentPassword, admin.PasswordHash, admin.PasswordSalt))
+            var admin = admins.GetByUsername(username);
+            if (admin is null
+                || !hasher.Verify(body.CurrentPassword, admin.PasswordHash ?? "", admin.PasswordSalt ?? ""))
                 return Results.Json(new { error = "current password is incorrect." }, statusCode: StatusCodes.Status401Unauthorized);
 
             var (hash, salt) = hasher.Hash(body.NewPassword);
-            await admins.UpdatePasswordAsync(username, hash, salt, ct);
+            admins.UpdatePassword(hash, salt);
             return Results.Ok(new { ok = true });
         }).RequireAuthorization();
 
@@ -164,55 +151,60 @@ public static class AdminEndpoints
             return Results.Ok(dto);
         }).RequireAuthorization();
 
-        // ---- Settings: Cloudflare D1 + S3-compatible storage (auth) ---------
+        // ---- Settings: database + storage + release key (auth) --------------
 
-        group.MapGet("/settings", (SettingsProvider provider) =>
-            Results.Ok(MaskedView(provider.Cloudflare, provider.Storage)))
+        group.MapGet("/settings", (SettingsProvider settings) =>
+            Results.Ok(MaskedView(settings)))
             .RequireAuthorization();
 
-        group.MapPut("/settings", (SettingsUpdateRequest body, SettingsProvider provider) =>
+        group.MapPut("/settings", (SettingsUpdateRequest body, SettingsProvider settings) =>
         {
-            // Start from the currently-persisted overrides so unspecified fields
-            // are preserved, then apply the incoming edits.
-            var overrides = provider.LoadOverrides();
-            var cf = overrides.Cloudflare;
-            var st = overrides.Storage;
+            var s = settings.Load();
 
-            // Database (Cloudflare D1). A provided (even blank) string replaces the
-            // override; null/absent leaves it unchanged.
-            if (body.AccountId is not null) cf.AccountId = Blank(body.AccountId);
-            if (body.D1DatabaseId is not null) cf.D1DatabaseId = Blank(body.D1DatabaseId);
-            if (!string.IsNullOrWhiteSpace(body.D1ApiToken)) cf.D1ApiToken = body.D1ApiToken;
+            // Database (pluggable).
+            if (body.DatabaseProvider is not null)
+            {
+                var kind = EffectiveDatabaseConfig.ParseProvider(body.DatabaseProvider);
+                s.Database.Provider = kind == DatabaseProviderKind.None ? null : EffectiveDatabaseConfig.ProviderToString(kind);
+            }
+            if (body.AccountId is not null) s.Database.AccountId = Blank(body.AccountId);
+            if (body.D1DatabaseId is not null) s.Database.D1DatabaseId = Blank(body.D1DatabaseId);
+            if (!string.IsNullOrWhiteSpace(body.D1ApiToken)) s.Database.D1ApiToken = body.D1ApiToken;
+            if (!string.IsNullOrWhiteSpace(body.DatabaseConnectionString)) s.Database.ConnectionString = body.DatabaseConnectionString;
 
             // Object storage (S3-compatible).
-            if (body.StorageServiceUrl is not null) st.ServiceUrl = Blank(body.StorageServiceUrl);
-            if (body.StorageRegion is not null) st.Region = Blank(body.StorageRegion);
-            if (body.StorageVideoBucket is not null) st.VideoBucket = Blank(body.StorageVideoBucket);
-            if (body.StorageApkBucket is not null) st.ApkBucket = Blank(body.StorageApkBucket);
-            if (body.StorageForcePathStyle is { } fps) st.ForcePathStyle = fps;
-            if (body.StoragePresignTtlMinutes is { } ttl) st.PresignTtlMinutes = ttl > 0 ? ttl : null;
-            if (body.StorageDisablePayloadSigning is { } dps) st.DisablePayloadSigning = dps;
-            if (body.StorageUseChecksumWhenRequired is { } cwr) st.UseChecksumWhenRequired = cwr;
+            if (body.StorageServiceUrl is not null) s.Storage.ServiceUrl = Blank(body.StorageServiceUrl);
+            if (body.StorageRegion is not null) s.Storage.Region = Blank(body.StorageRegion);
+            if (body.StorageVideoBucket is not null) s.Storage.VideoBucket = Blank(body.StorageVideoBucket);
+            if (body.StorageApkBucket is not null) s.Storage.ApkBucket = Blank(body.StorageApkBucket);
+            if (body.StorageForcePathStyle is { } fps) s.Storage.ForcePathStyle = fps;
+            if (body.StoragePresignTtlMinutes is { } ttl) s.Storage.PresignTtlMinutes = ttl > 0 ? ttl : null;
+            if (body.StorageDisablePayloadSigning is { } dps) s.Storage.DisablePayloadSigning = dps;
+            if (body.StorageUseChecksumWhenRequired is { } cwr) s.Storage.UseChecksumWhenRequired = cwr;
+            if (!string.IsNullOrWhiteSpace(body.StorageAccessKeyId)) s.Storage.AccessKeyId = body.StorageAccessKeyId;
+            if (!string.IsNullOrWhiteSpace(body.StorageSecretAccessKey)) s.Storage.SecretAccessKey = body.StorageSecretAccessKey;
 
-            // Storage secrets: blank/absent means "leave unchanged".
-            if (!string.IsNullOrWhiteSpace(body.StorageAccessKeyId)) st.AccessKeyId = body.StorageAccessKeyId;
-            if (!string.IsNullOrWhiteSpace(body.StorageSecretAccessKey)) st.SecretAccessKey = body.StorageSecretAccessKey;
+            // Release write secret.
+            if (!string.IsNullOrWhiteSpace(body.ApiKey)) s.Api.Key = body.ApiKey;
 
-            provider.SaveOverrides(overrides);
-            return Results.Ok(MaskedView(provider.Cloudflare, provider.Storage));
+            settings.Save(s);
+            return Results.Ok(MaskedView(settings));
         }).RequireAuthorization();
 
-        group.MapPost("/settings/test", async (D1Client d1, S3Storage storage, CancellationToken ct) =>
+        group.MapPost("/settings/test", async (DatabaseService db, S3Storage storage, CancellationToken ct) =>
         {
-            var d1Result = await TestD1Async(d1, ct);
+            var dbResult = await TestDatabaseAsync(db, ct);
             var storageResult = await TestStorageAsync(storage, ct);
-            return Results.Ok(new SettingsTestDto(d1Result, storageResult));
+            return Results.Ok(new SettingsTestDto(dbResult, storageResult));
         }).RequireAuthorization();
 
         return app;
     }
 
     // ---- Helpers -------------------------------------------------------------
+
+    private static IResult Unauthorized() =>
+        Results.Json(new { error = "invalid credentials." }, statusCode: StatusCodes.Status401Unauthorized);
 
     private static async Task SignInAsync(HttpContext http, string username)
     {
@@ -227,22 +219,38 @@ public static class AdminEndpoints
 
     private static string? Blank(string s) => string.IsNullOrWhiteSpace(s) ? null : s;
 
-    private static SettingsViewDto MaskedView(EffectiveCloudflareConfig cf, EffectiveStorageConfig st) => new(
-        // Database (Cloudflare D1)
-        AccountId: cf.AccountId,
-        D1DatabaseId: cf.D1DatabaseId,
-        D1ApiToken: Mask(cf.D1ApiToken),
-        // Object storage (S3-compatible)
-        StorageServiceUrl: st.ServiceUrl,
-        StorageRegion: st.Region,
-        StorageAccessKeyId: Mask(st.AccessKeyId),
-        StorageSecretAccessKey: Mask(st.SecretAccessKey),
-        StorageVideoBucket: st.VideoBucket,
-        StorageApkBucket: st.ApkBucket,
-        StorageForcePathStyle: st.ForcePathStyle,
-        StoragePresignTtlMinutes: st.PresignTtlMinutes,
-        StorageDisablePayloadSigning: st.DisablePayloadSigning,
-        StorageUseChecksumWhenRequired: st.UseChecksumWhenRequired);
+    private static bool StorageConfigured(EffectiveStorageConfig st) =>
+        !string.IsNullOrWhiteSpace(st.AccessKeyId)
+        && !string.IsNullOrWhiteSpace(st.SecretAccessKey)
+        && !string.IsNullOrWhiteSpace(st.VideoBucket);
+
+    private static SettingsViewDto MaskedView(SettingsProvider settings)
+    {
+        var db = settings.Database;
+        var st = settings.Storage;
+        return new SettingsViewDto(
+            // Database
+            DatabaseProvider: EffectiveDatabaseConfig.ProviderToString(db.Provider),
+            AccountId: db.AccountId,
+            D1DatabaseId: db.D1DatabaseId,
+            D1ApiToken: Mask(db.D1ApiToken),
+            DatabaseConnectionString: Mask(db.ConnectionString),
+            DatabaseConfigured: db.IsConfigured,
+            // Object storage
+            StorageServiceUrl: st.ServiceUrl,
+            StorageRegion: st.Region,
+            StorageAccessKeyId: Mask(st.AccessKeyId),
+            StorageSecretAccessKey: Mask(st.SecretAccessKey),
+            StorageVideoBucket: st.VideoBucket,
+            StorageApkBucket: st.ApkBucket,
+            StorageForcePathStyle: st.ForcePathStyle,
+            StoragePresignTtlMinutes: st.PresignTtlMinutes,
+            StorageDisablePayloadSigning: st.DisablePayloadSigning,
+            StorageUseChecksumWhenRequired: st.UseChecksumWhenRequired,
+            StorageConfigured: StorageConfigured(st),
+            // Release key
+            ApiKey: Mask(settings.ApiKey));
+    }
 
     private static MaskedSecretDto Mask(string? secret)
     {
@@ -251,12 +259,16 @@ public static class AdminEndpoints
         return new MaskedSecretDto(IsSet: true, Last4: last4);
     }
 
-    private static async Task<ConnectionResultDto> TestD1Async(D1Client d1, CancellationToken ct)
+    private static async Task<ConnectionResultDto> TestDatabaseAsync(DatabaseService db, CancellationToken ct)
     {
+        if (!db.IsConfigured)
+            return new ConnectionResultDto(false, "Database is not configured.");
         try
         {
-            await d1.QueryAsync("SELECT 1 AS ok;", ct: ct);
-            return new ConnectionResultDto(true, "D1 query succeeded.");
+            await db.SchemaInitializer.EnsureSchemaAsync(ct);
+            // A trivial read confirms connectivity for both D1 and EF providers.
+            await db.Releases.GetLatestAsync(ct);
+            return new ConnectionResultDto(true, $"Database reachable ({EffectiveDatabaseConfig.ProviderToString(db.Provider)}).");
         }
         catch (Exception ex)
         {

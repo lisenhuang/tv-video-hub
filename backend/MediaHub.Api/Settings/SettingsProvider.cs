@@ -4,46 +4,53 @@ using Microsoft.Extensions.Options;
 namespace MediaHub.Api.Settings;
 
 /// <summary>
-/// Single source of truth for the config actually in effect. It merges the
-/// persisted dashboard overrides (from <see cref="SettingsStore"/>) over the
-/// env/appsettings defaults: a persisted field wins only when it is non-empty,
-/// otherwise the default is used.
+/// Single source of truth for the config in effect. The <b>local settings file</b>
+/// (via <see cref="SettingsStore"/>) is authoritative; env/appsettings options are
+/// read only as OPTIONAL seeds/defaults. With no env and no file the app still
+/// starts — everything is then configured through the <c>/admin</c> dashboard.
 ///
-/// Exposes two effective snapshots: <see cref="Cloudflare"/> (Cloudflare D1 — the
-/// database is Cloudflare-specific) and <see cref="Storage"/> (provider-agnostic
-/// S3-compatible object storage). Registered as a singleton.
-/// <see cref="Data.D1Client"/> reads <see cref="Cloudflare"/> and
-/// <see cref="Storage.S3Storage"/> reads <see cref="Storage"/> per operation, so a
-/// dashboard edit takes effect on the next request without a restart.
+/// Exposes effective snapshots: <see cref="Database"/> (pluggable: D1 or SQL),
+/// <see cref="Storage"/> (S3-compatible object storage), and the release
+/// <see cref="ApiKey"/>. The admin account lives here too (local, no DB needed).
+/// Registered as a singleton; consumers read per operation, so a dashboard edit
+/// takes effect on the next request without a restart.
 /// </summary>
 public sealed class SettingsProvider
 {
-    private readonly CloudflareOptions _cloudflareDefaults;
-    private readonly StorageOptions _storageDefaults;
+    private readonly CloudflareOptions _cloudflareSeed;
+    private readonly StorageOptions _storageSeed;
+    private readonly ApiOptions _apiSeed;
+    private readonly DatabaseOptions _databaseSeed;
     private readonly SettingsStore _store;
     private readonly object _gate = new();
 
-    private EffectiveCloudflareConfig _cloudflare;
+    private EffectiveDatabaseConfig _database;
     private EffectiveStorageConfig _storage;
+    private string _apiKey;
 
     public SettingsProvider(
-        IOptions<CloudflareOptions> cloudflareDefaults,
-        IOptions<StorageOptions> storageDefaults,
+        IOptions<CloudflareOptions> cloudflareSeed,
+        IOptions<StorageOptions> storageSeed,
+        IOptions<ApiOptions> apiSeed,
+        IOptions<DatabaseOptions> databaseSeed,
         SettingsStore store)
     {
-        _cloudflareDefaults = cloudflareDefaults.Value;
-        _storageDefaults = storageDefaults.Value;
+        _cloudflareSeed = cloudflareSeed.Value;
+        _storageSeed = storageSeed.Value;
+        _apiSeed = apiSeed.Value;
+        _databaseSeed = databaseSeed.Value;
         _store = store;
 
-        var overrides = _store.Load();
-        _cloudflare = BuildCloudflare(overrides.Cloudflare);
-        _storage = BuildStorage(overrides.Storage);
+        var s = _store.Load();
+        _database = BuildDatabase(s.Database);
+        _storage = BuildStorage(s.Storage);
+        _apiKey = BuildApiKey(s.Api);
     }
 
-    /// <summary>The current effective Cloudflare D1 config snapshot.</summary>
-    public EffectiveCloudflareConfig Cloudflare
+    /// <summary>The current effective database config snapshot.</summary>
+    public EffectiveDatabaseConfig Database
     {
-        get { lock (_gate) return _cloudflare; }
+        get { lock (_gate) return _database; }
     }
 
     /// <summary>The current effective S3-compatible object-storage config snapshot.</summary>
@@ -52,20 +59,27 @@ public sealed class SettingsProvider
         get { lock (_gate) return _storage; }
     }
 
-    /// <summary>The raw persisted overrides (used by the settings endpoints).</summary>
-    public PersistedSettings LoadOverrides() => _store.Load();
+    /// <summary>The current effective release write secret (may be empty = disabled).</summary>
+    public string ApiKey
+    {
+        get { lock (_gate) return _apiKey; }
+    }
+
+    /// <summary>The raw persisted settings (used by the settings/admin endpoints).</summary>
+    public PersistedSettings Load() => _store.Load();
 
     /// <summary>
-    /// Persist new overrides and atomically refresh both snapshots so the next
+    /// Persist new settings and atomically refresh all snapshots so the next
     /// request sees them.
     /// </summary>
-    public void SaveOverrides(PersistedSettings overrides)
+    public void Save(PersistedSettings settings)
     {
         lock (_gate)
         {
-            _store.Save(overrides);
-            _cloudflare = BuildCloudflare(overrides.Cloudflare);
-            _storage = BuildStorage(overrides.Storage);
+            _store.Save(settings);
+            _database = BuildDatabase(settings.Database);
+            _storage = BuildStorage(settings.Storage);
+            _apiKey = BuildApiKey(settings.Api);
         }
     }
 
@@ -74,44 +88,54 @@ public sealed class SettingsProvider
     {
         lock (_gate)
         {
-            var overrides = _store.Load();
-            _cloudflare = BuildCloudflare(overrides.Cloudflare);
-            _storage = BuildStorage(overrides.Storage);
+            var s = _store.Load();
+            _database = BuildDatabase(s.Database);
+            _storage = BuildStorage(s.Storage);
+            _apiKey = BuildApiKey(s.Api);
         }
     }
 
-    private EffectiveCloudflareConfig BuildCloudflare(PersistedSettings.CloudflareOverrides o) =>
-        new()
-        {
-            AccountId = Pick(o.AccountId, _cloudflareDefaults.AccountId),
-            D1DatabaseId = Pick(o.D1DatabaseId, _cloudflareDefaults.D1.DatabaseId),
-            D1ApiToken = Pick(o.D1ApiToken, _cloudflareDefaults.D1.ApiToken),
-            // ApiBaseUrl is not dashboard-editable; always from defaults.
-            D1ApiBaseUrl = string.IsNullOrWhiteSpace(_cloudflareDefaults.D1.ApiBaseUrl)
-                ? "https://api.cloudflare.com/client/v4"
-                : _cloudflareDefaults.D1.ApiBaseUrl,
-        };
-
-    private EffectiveStorageConfig BuildStorage(PersistedSettings.StorageOverrides o)
+    private EffectiveDatabaseConfig BuildDatabase(PersistedSettings.DatabaseSettings d)
     {
-        var ttl = o.PresignTtlMinutes is { } t and > 0 ? t : _storageDefaults.PresignTtlMinutes;
+        // Provider: persisted wins; else the seed default (which itself may be empty → None).
+        var providerStr = !string.IsNullOrWhiteSpace(d.Provider) ? d.Provider : _databaseSeed.Provider;
+        var provider = EffectiveDatabaseConfig.ParseProvider(providerStr);
 
-        return new EffectiveStorageConfig
+        return new EffectiveDatabaseConfig
         {
-            ServiceUrl = Pick(o.ServiceUrl, _storageDefaults.ServiceUrl),
-            Region = Pick(o.Region, _storageDefaults.Region),
-            AccessKeyId = Pick(o.AccessKeyId, _storageDefaults.AccessKeyId),
-            SecretAccessKey = Pick(o.SecretAccessKey, _storageDefaults.SecretAccessKey),
-            VideoBucket = Pick(o.VideoBucket, _storageDefaults.VideoBucket),
-            ApkBucket = Pick(o.ApkBucket, _storageDefaults.ApkBucket),
-            ForcePathStyle = o.ForcePathStyle ?? _storageDefaults.ForcePathStyle,
-            PresignTtlMinutes = ttl,
-            DisablePayloadSigning = o.DisablePayloadSigning ?? _storageDefaults.DisablePayloadSigning,
-            UseChecksumWhenRequired = o.UseChecksumWhenRequired ?? _storageDefaults.UseChecksumWhenRequired,
+            Provider = provider,
+            AccountId = Pick(d.AccountId, _cloudflareSeed.AccountId),
+            D1DatabaseId = Pick(d.D1DatabaseId, _cloudflareSeed.D1.DatabaseId),
+            D1ApiToken = Pick(d.D1ApiToken, _cloudflareSeed.D1.ApiToken),
+            D1ApiBaseUrl = string.IsNullOrWhiteSpace(_cloudflareSeed.D1.ApiBaseUrl)
+                ? "https://api.cloudflare.com/client/v4"
+                : _cloudflareSeed.D1.ApiBaseUrl,
+            ConnectionString = Pick(d.ConnectionString, _databaseSeed.ConnectionString),
         };
     }
 
-    /// <summary>Override wins when non-empty; otherwise fall back to the default.</summary>
+    private EffectiveStorageConfig BuildStorage(PersistedSettings.StorageOverrides o)
+    {
+        var ttl = o.PresignTtlMinutes is { } t and > 0 ? t : _storageSeed.PresignTtlMinutes;
+
+        return new EffectiveStorageConfig
+        {
+            ServiceUrl = Pick(o.ServiceUrl, _storageSeed.ServiceUrl),
+            Region = Pick(o.Region, _storageSeed.Region),
+            AccessKeyId = Pick(o.AccessKeyId, _storageSeed.AccessKeyId),
+            SecretAccessKey = Pick(o.SecretAccessKey, _storageSeed.SecretAccessKey),
+            VideoBucket = Pick(o.VideoBucket, _storageSeed.VideoBucket),
+            ApkBucket = Pick(o.ApkBucket, _storageSeed.ApkBucket),
+            ForcePathStyle = o.ForcePathStyle ?? _storageSeed.ForcePathStyle,
+            PresignTtlMinutes = ttl,
+            DisablePayloadSigning = o.DisablePayloadSigning ?? _storageSeed.DisablePayloadSigning,
+            UseChecksumWhenRequired = o.UseChecksumWhenRequired ?? _storageSeed.UseChecksumWhenRequired,
+        };
+    }
+
+    private string BuildApiKey(PersistedSettings.ApiSettings a) => Pick(a.Key, _apiSeed.Key);
+
+    /// <summary>Override wins when non-empty; otherwise fall back to the seed default.</summary>
     private static string Pick(string? overrideValue, string defaultValue) =>
         string.IsNullOrWhiteSpace(overrideValue) ? defaultValue : overrideValue;
 }

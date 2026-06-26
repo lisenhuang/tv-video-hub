@@ -1,11 +1,12 @@
-namespace MediaHub.Api.Data;
+namespace MediaHub.Api.Data.D1;
 
 /// <summary>
-/// Creates the D1 schema on startup if it isn't there yet. Uses
-/// <c>CREATE TABLE IF NOT EXISTS</c> so it is safe to run on every boot and
-/// against an existing database — additive only, never destructive.
+/// Creates the D1 schema if it isn't there yet. Uses <c>CREATE TABLE IF NOT EXISTS</c>
+/// so it is safe to run repeatedly and against an existing database — additive only,
+/// never destructive. The admin account is stored locally (not in the DB), so there
+/// is no <c>admins</c> table here.
 /// </summary>
-public sealed class DatabaseInitializer(D1Client d1, ILogger<DatabaseInitializer> log)
+public sealed class D1SchemaInitializer(D1Client d1, ILogger<D1SchemaInitializer> log) : ISchemaInitializer
 {
     private static readonly string[] Statements =
     [
@@ -34,18 +35,9 @@ public sealed class DatabaseInitializer(D1Client d1, ILogger<DatabaseInitializer
             published_at  TEXT NOT NULL
         );
         """,
-        """
-        CREATE TABLE IF NOT EXISTS admins (
-            id            TEXT PRIMARY KEY,
-            username      TEXT NOT NULL UNIQUE,
-            password_hash TEXT NOT NULL,
-            password_salt TEXT NOT NULL,
-            created_at    TEXT NOT NULL
-        );
-        """,
     ];
 
-    public async Task InitializeAsync(CancellationToken ct = default)
+    public async Task EnsureSchemaAsync(CancellationToken ct = default)
     {
         foreach (var sql in Statements)
             await d1.ExecuteAsync(sql, ct: ct);

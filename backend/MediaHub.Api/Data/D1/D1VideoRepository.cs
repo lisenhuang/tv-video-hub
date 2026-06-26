@@ -1,8 +1,9 @@
 using MediaHub.Api.Models;
 
-namespace MediaHub.Api.Data;
+namespace MediaHub.Api.Data.D1;
 
-public sealed class VideoRepository(D1Client d1)
+/// <summary>Cloudflare D1 (HTTP query API) implementation of <see cref="IVideoRepository"/>.</summary>
+public sealed class D1VideoRepository(D1Client d1) : IVideoRepository
 {
     public async Task<IReadOnlyList<Video>> ListAsync(CancellationToken ct = default)
     {

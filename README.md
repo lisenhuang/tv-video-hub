@@ -8,7 +8,8 @@ tv-video-hub/
 │                     · video catalog + playback URLs
 │                     · APK hosting + "is there a new version?" endpoint
 │                     · storage: S3-compatible (R2 / AWS S3 / MinIO / …)
-│                     · database: Cloudflare D1
+│                     · database: Cloudflare D1 OR self-hosted SQL (SQLite/Postgres/SQL Server)
+│                     · zero-env: configured via the /admin dashboard
 ├── android-tv/       Android TV app (Kotlin · Compose for TV · Media3/ExoPlayer)
 │                     · browses & plays videos from the backend
 │                     · self-updates by checking the backend version endpoint
@@ -28,7 +29,7 @@ agree on this contract** — if you change a field, change it in both `backend/`
 | source | link |
 |--------|------|
 | 📦 **GitHub release (latest CI build)** | **[`tv-video-hub.apk`](https://github.com/lisenhuang/tv-video-hub/releases/latest/download/tv-video-hub.apk)** |
-| 🌐 Your backend (fixed path) | `https://<your-backend>/api/app/download` → always the latest signed APK |
+| 🌐 Your backend (fixed path) | `https://<your-backend>/api/app/latest.apk` (or `/api/app/download`) → always the latest signed APK |
 
 > ⚠️ Signed with the repo's **public convenience keystore** (auto-build only, **not for
 > production** — see [`android-tv/README.md`](android-tv/README.md#-signing)). The GitHub link
@@ -40,13 +41,13 @@ agree on this contract** — if you change a field, change it in both `backend/`
 ## How it fits together
 
 ```
-                 ┌──────────────────────────┐   ┌──────────────────────┐
-                 │  S3-compatible storage   │   │   Cloudflare D1       │
-                 │  (R2 / AWS / MinIO / …)   │   │   (SQLite DB)         │
-                 │  · video files           │   │   · videos table      │
-                 │  · apk files             │   │   · app_releases      │
-                 └───────────▲──────────────┘   └──────────▲───────────┘
-                         │ S3 API / presign       │ D1 REST query
+                 ┌──────────────────────────┐   ┌──────────────────────────┐
+                 │  S3-compatible storage   │   │   Pluggable database     │
+                 │  (R2 / AWS / MinIO / …)   │   │   D1 or SQL (SQLite/     │
+                 │  · video files           │   │   Postgres/SQL Server)   │
+                 │  · apk files             │   │   · videos · app_releases│
+                 └───────────▲──────────────┘   └──────────▲───────────────┘
+                         │ S3 API / presign       │ D1 HTTP / EF Core
                  ┌───────┴───────────────────────┴──────────────┐
                  │           backend  (.NET 10, container)        │
                  │   GET  /api/videos          list catalog       │
@@ -136,8 +137,12 @@ to its own `BuildConfig.VERSION_CODE`.
 
 ### `GET /api/app/download?versionCode={code}`
 Returns the APK bytes. Implemented as a `302` redirect to a short-lived presigned
-R2 URL (`Content-Type: application/vnd.android.package-archive`). If `versionCode`
-is omitted, the latest is served.
+object-storage URL (`Content-Type: application/vnd.android.package-archive`). If
+`versionCode` is omitted, the latest is served.
+
+### `GET /api/app/latest.apk`
+Fixed-path alias for "download the latest APK" — same `302` to the latest signed APK
+as `/api/app/download` with no `versionCode`. A stable URL you can share/bookmark.
 
 ### `POST /api/app/releases`   *(auth: `X-Api-Key`)*
 Called by CI after a successful Android build to publish a new APK. Accepts
@@ -170,25 +175,19 @@ reference an object already in R2 (`application/json` with `objectKey`).
 
 ## Configuration (backend)
 
-Credentials via env vars / user-secrets — never commit. **Database = Cloudflare D1**;
-**object storage = any S3-compatible store** (R2 default; AWS S3, MinIO, B2, …). Full
-list + provider presets in [`backend/README.md`](backend/README.md). Quick reference:
+**Zero env required.** Boot the backend and configure everything at **`/admin`** —
+admin account, **database**, **object storage**, and the release key — persisted to a
+local file (`App_Data/settings.json`). Env vars are only OPTIONAL seeds.
 
-| env var                      | purpose                                         |
-|------------------------------|-------------------------------------------------|
-| `Cloudflare__AccountId`      | Cloudflare account id (D1)                       |
-| `Cloudflare__D1__DatabaseId` | D1 database id                                   |
-| `Cloudflare__D1__ApiToken`   | API token with D1 edit permission                |
-| `Storage__ServiceUrl`        | S3 endpoint (empty = AWS regional endpoint)      |
-| `Storage__Region`            | `auto` (R2) · `us-east-1` (AWS) · region (MinIO) |
-| `Storage__AccessKeyId`       | S3 access key id                                 |
-| `Storage__SecretAccessKey`   | S3 secret                                        |
-| `Storage__VideoBucket`       | bucket holding video files                       |
-| `Storage__ApkBucket`         | bucket holding apk files                         |
-| `Storage__ForcePathStyle`    | `true` (R2/MinIO) · `false` (AWS virtual-hosted) |
-| `Api__Key`                   | shared secret for `X-Api-Key` writes             |
+- 🗄️ **Database (pluggable):** Cloudflare **D1** *or* self-hosted SQL via EF Core —
+  **SQLite / PostgreSQL / SQL Server** (MySQL selectable; provider not bundled, see
+  `backend/README.md`). First run needs **no database** — the admin is stored locally.
+- 📦 **Object storage:** any **S3-compatible** store (R2 default; AWS S3, MinIO, B2, …).
 
-An admin dashboard at **`/admin`** can edit D1 + storage config live (no restart).
+Optional seed env vars (full list + presets in [`backend/README.md`](backend/README.md)):
+`Database__Provider`, `Database__ConnectionString`, `Cloudflare__*` (D1), `Storage__*`,
+`Api__Key`. In Docker, persist the `App_Data` volume (it holds the authoritative config
+and, for the `sqlite` provider, the database file).
 
 ## Configuration (android)
 

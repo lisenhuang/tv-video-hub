@@ -1,30 +1,30 @@
-using MediaHub.Api.Options;
-using Microsoft.Extensions.Options;
+using MediaHub.Api.Settings;
 
 namespace MediaHub.Api.Auth;
 
 /// <summary>
 /// Endpoint filter that guards write endpoints with the <c>X-Api-Key</c> header.
-/// If no key is configured the endpoint is refused (503) rather than left open.
+/// The key is read live from <see cref="SettingsProvider"/> (dashboard-editable), so
+/// changes take effect without a restart. If no key is configured the endpoint is
+/// refused (503) rather than left open.
 /// </summary>
-public sealed class ApiKeyFilter(IOptions<ApiOptions> options) : IEndpointFilter
+public sealed class ApiKeyFilter(SettingsProvider settings) : IEndpointFilter
 {
     public const string HeaderName = "X-Api-Key";
-
-    private readonly string _key = options.Value.Key;
 
     public async ValueTask<object?> InvokeAsync(
         EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
-        if (string.IsNullOrEmpty(_key))
+        var key = settings.ApiKey;
+        if (string.IsNullOrEmpty(key))
         {
             return Results.Problem(
-                "Write endpoints are disabled: no Api:Key is configured.",
+                "Write endpoints are disabled: no release API key is configured.",
                 statusCode: StatusCodes.Status503ServiceUnavailable);
         }
 
         var provided = context.HttpContext.Request.Headers[HeaderName].ToString();
-        if (!CryptographicEquals(provided, _key))
+        if (!CryptographicEquals(provided, key))
             return Results.Unauthorized();
 
         return await next(context);

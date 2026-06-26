@@ -1,53 +1,59 @@
-using MediaHub.Api.Models;
+using MediaHub.Api.Settings;
 
 namespace MediaHub.Api.Data;
 
 /// <summary>
-/// Persists the single admin account in the <c>admins</c> table. There is no
-/// update/delete surface beyond the optional password change handled by the
-/// endpoints — by design there is exactly one admin.
+/// The single local admin account, stored in the local settings file (NOT in the
+/// database). This removes the database chicken-and-egg: the first run can create an
+/// admin and log in with no DB configured at all. PBKDF2 hashing stays in
+/// <see cref="Auth.PasswordHasher"/>.
 /// </summary>
-public sealed class AdminRepository(D1Client d1)
+public sealed class AdminRepository(SettingsProvider settings)
 {
-    public async Task<long> CountAsync(CancellationToken ct = default)
+    /// <summary>True once an admin exists in the local store.</summary>
+    public bool Exists()
     {
-        var rows = await d1.QueryAsync("SELECT COUNT(*) AS n FROM admins;", ct: ct);
-        return rows.Count == 0 ? 0 : rows[0].GetLong("n");
+        var a = settings.Load().Admin;
+        return a is not null
+            && !string.IsNullOrWhiteSpace(a.Username)
+            && !string.IsNullOrWhiteSpace(a.PasswordHash);
     }
 
-    public async Task<Admin?> GetByUsernameAsync(string username, CancellationToken ct = default)
+    /// <summary>The stored admin, or null if not set up yet.</summary>
+    public PersistedSettings.AdminAccount? Get() => Exists() ? settings.Load().Admin : null;
+
+    public PersistedSettings.AdminAccount? GetByUsername(string username)
     {
-        var rows = await d1.QueryAsync(
-            "SELECT * FROM admins WHERE username = ? LIMIT 1;", [username], ct);
-        return rows.Count == 0 ? null : Map(rows[0]);
+        var a = Get();
+        return a is not null && string.Equals(a.Username, username, StringComparison.Ordinal) ? a : null;
     }
 
-    public async Task InsertAsync(Admin admin, CancellationToken ct = default)
+    /// <summary>
+    /// Create the single admin. Returns false if one already exists (single-admin model).
+    /// </summary>
+    public bool TryCreate(string username, string passwordHash, string passwordSalt)
     {
-        await d1.ExecuteAsync(
-            """
-            INSERT INTO admins (id, username, password_hash, password_salt, created_at)
-            VALUES (?, ?, ?, ?, ?);
-            """,
-            [admin.Id, admin.Username, admin.PasswordHash, admin.PasswordSalt, admin.CreatedAt],
-            ct);
+        var s = settings.Load();
+        if (s.Admin is { Username: not null and not "" } && !string.IsNullOrWhiteSpace(s.Admin.PasswordHash))
+            return false;
+
+        s.Admin = new PersistedSettings.AdminAccount
+        {
+            Username = username,
+            PasswordHash = passwordHash,
+            PasswordSalt = passwordSalt,
+            CreatedAt = DateTimeOffset.UtcNow.ToString("O"),
+        };
+        settings.Save(s);
+        return true;
     }
 
-    public async Task UpdatePasswordAsync(
-        string username, string passwordHash, string passwordSalt, CancellationToken ct = default)
+    public void UpdatePassword(string passwordHash, string passwordSalt)
     {
-        await d1.ExecuteAsync(
-            "UPDATE admins SET password_hash = ?, password_salt = ? WHERE username = ?;",
-            [passwordHash, passwordSalt, username],
-            ct);
+        var s = settings.Load();
+        if (s.Admin is null) return;
+        s.Admin.PasswordHash = passwordHash;
+        s.Admin.PasswordSalt = passwordSalt;
+        settings.Save(s);
     }
-
-    private static Admin Map(D1Row r) => new()
-    {
-        Id = r.GetRequiredString("id"),
-        Username = r.GetRequiredString("username"),
-        PasswordHash = r.GetRequiredString("password_hash"),
-        PasswordSalt = r.GetRequiredString("password_salt"),
-        CreatedAt = r.GetDate("created_at"),
-    };
 }

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using MediaHub.Api.Auth;
 using MediaHub.Api.Data;
+using MediaHub.Api.Data.Ef;
 using MediaHub.Api.Endpoints;
 using MediaHub.Api.Options;
 using MediaHub.Api.Settings;
@@ -10,13 +11,15 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ---- Options -------------------------------------------------------------
+// ---- Options (OPTIONAL env/appsettings seeds; the local file is authoritative) --
 builder.Services.Configure<CloudflareOptions>(
     builder.Configuration.GetSection(CloudflareOptions.SectionName));
 builder.Services.Configure<ApiOptions>(
     builder.Configuration.GetSection(ApiOptions.SectionName));
 builder.Services.Configure<StorageOptions>(
     builder.Configuration.GetSection(StorageOptions.SectionName));
+builder.Services.Configure<DatabaseOptions>(
+    builder.Configuration.GetSection(DatabaseOptions.SectionName));
 builder.Services.Configure<SettingsOptions>(
     builder.Configuration.GetSection(SettingsOptions.SectionName));
 
@@ -36,14 +39,18 @@ builder.Services.AddSingleton<SettingsStore>();
 builder.Services.AddSingleton<SettingsProvider>();
 
 // ---- Data + storage ------------------------------------------------------
+// Pluggable database: D1 (HTTP) or EF Core SQL (sqlite/postgres/mysql/sqlserver),
+// chosen at runtime from settings. DatabaseService resolves the right impl per scope;
+// the VideoRepository/AppReleaseRepository facades ensure schema + delegate.
 builder.Services.AddHttpClient<D1Client>();
+builder.Services.AddSingleton<EfContextFactory>();
+builder.Services.AddScoped<DatabaseService>();
 builder.Services.AddScoped<VideoRepository>();
 builder.Services.AddScoped<AppReleaseRepository>();
-builder.Services.AddScoped<AdminRepository>();
 builder.Services.AddScoped<VideoCreationService>();
+builder.Services.AddSingleton<AdminRepository>();   // local store over the settings file
 builder.Services.AddSingleton<S3Storage>();
 builder.Services.AddSingleton<PasswordHasher>();
-builder.Services.AddScoped<DatabaseInitializer>();
 builder.Services.AddScoped<ApiKeyFilter>();
 
 // ---- Admin cookie authentication (additional to the X-Api-Key path) ------
@@ -100,23 +107,46 @@ var app = builder.Build();
 app.UseCors();
 app.MapOpenApi();
 
+// Translate "database not configured yet" into a clean 503 JSON instead of a 500,
+// so the catalog endpoints fail gracefully until the dashboard configures the DB.
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (DatabaseNotConfiguredException ex)
+    {
+        if (!context.Response.HasStarted)
+        {
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            await context.Response.WriteAsJsonAsync(new { error = ex.Message });
+        }
+    }
+});
+
 // Serve the admin dashboard's static assets from wwwroot.
 app.UseStaticFiles();
 
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Ensure the D1 schema exists at startup (additive, idempotent). Failures here
-// shouldn't crash the process — log and continue so health checks still serve.
+// Ensure the schema exists at startup IF a database is already configured (additive,
+// idempotent). With zero config the app still boots — the dashboard drives setup and
+// the schema is ensured lazily on first use. Never crash the process here.
 using (var scope = app.Services.CreateScope())
 {
     try
     {
-        await scope.ServiceProvider.GetRequiredService<DatabaseInitializer>().InitializeAsync();
+        var db = scope.ServiceProvider.GetRequiredService<DatabaseService>();
+        if (await db.TryEnsureSchemaAsync())
+            app.Logger.LogInformation("Database schema ensured at startup.");
+        else
+            app.Logger.LogInformation("Database not configured yet; configure it at /admin.");
     }
     catch (Exception ex)
     {
-        app.Logger.LogError(ex, "D1 schema initialization failed; check Cloudflare credentials.");
+        app.Logger.LogError(ex, "Schema initialization failed; check database settings in /admin.");
     }
 }
 
