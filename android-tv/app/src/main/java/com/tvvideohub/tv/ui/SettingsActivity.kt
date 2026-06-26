@@ -30,6 +30,7 @@ import com.tvvideohub.tv.core.ThemeMode
 import com.tvvideohub.tv.data.CatalogRepository
 import com.tvvideohub.tv.data.api.ApiClient
 import com.tvvideohub.tv.ui.components.OutlinedInput
+import com.tvvideohub.tv.ui.components.ParentalGate
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -53,9 +54,16 @@ private fun SettingsScreen(onBack: () -> Unit) {
     val themeMode by settings.themeMode.collectAsStateWithLifecycle()
     var url by remember { mutableStateOf(settings.baseUrl.value ?: "") }
     var status by remember { mutableStateOf<String?>(null) }
+    var showGate by remember { mutableStateOf(false) }
 
-    Box(Modifier.fillMaxSize().padding(40.dp)) {
-        Column(Modifier.widthIn(max = 640.dp)) {
+    fun commitUrl() {
+        settings.setBaseUrl(url)
+        ApiClient.configure(settings.baseUrl.value)
+        status = "Saved"
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.padding(40.dp).widthIn(max = 640.dp)) {
             Text("Settings", style = MaterialTheme.typography.headlineMedium, color = colors.onBackground)
 
             // --- Backend base URL ---
@@ -85,11 +93,11 @@ private fun SettingsScreen(onBack: () -> Unit) {
                     }
                 }) { Text("Test") }
                 Button(onClick = {
-                    if (url.isNotBlank()) {
-                        settings.setBaseUrl(url)
-                        ApiClient.configure(settings.baseUrl.value)
-                        status = "Saved"
-                    }
+                    if (url.isBlank()) return@Button
+                    // Gate a change to an already-configured URL behind a math quiz so
+                    // kids can't alter it; saving the same value is a no-op anyway.
+                    if (url == settings.baseUrl.value) { commitUrl(); return@Button }
+                    showGate = true
                 }) { Text("Save") }
             }
 
@@ -110,6 +118,14 @@ private fun SettingsScreen(onBack: () -> Unit) {
             }
 
             Button(onClick = onBack, modifier = Modifier.padding(top = 32.dp)) { Text("Back") }
+        }
+
+        if (showGate) {
+            ParentalGate(
+                prompt = "Solve to change the backend address",
+                onPass = { showGate = false; commitUrl() },
+                onCancel = { showGate = false }
+            )
         }
     }
 }

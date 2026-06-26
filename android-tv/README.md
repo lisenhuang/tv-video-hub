@@ -43,6 +43,8 @@ The base URL is a **runtime setting**, not a hardcoded constant:
 - **In the app** — entered on the first-run setup screen and editable later under
   **Settings → Backend**. Stored in `SharedPreferences` (`SettingsStore`) and applied live
   (`ApiClient` rebuilds its Retrofit instance on change). It survives app upgrades.
+  Changing an already-configured URL is **gated by a parental math quiz** (a two-digit ×
+  one-digit problem, e.g. `17 × 7`) so children can't alter it; first-run setup isn't gated.
 - **Build-time default (optional)** — `app/build.gradle.kts` reads the `backendBaseUrl`
   Gradle property into `BuildConfig.BACKEND_BASE_URL`, used only to **pre-fill** the setup
   field. Pass it to seed installs:
