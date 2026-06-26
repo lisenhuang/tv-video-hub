@@ -36,6 +36,12 @@ Runtime setting (not hardcoded): entered on first run, editable in **Settings �
 stored in `SharedPreferences`, survives upgrades. Changing it is **gated by a math quiz**
 (`17 × 7`) so kids can't. Build-time `-PbackendBaseUrl=…` only pre-fills the field.
 
+Both **`http://`** and **`https://`** backends are accepted — the manifest sets
+`usesCleartextTraffic="true"`, so a plain-`http` LAN address (e.g. `http://192.168.1.50:8080`
+for a home PC/OpenWRT box) works, not just TLS. ⚠️ If you type a host with **no scheme**,
+the app assumes `https://` (`SettingsStore.normalize`), so include the explicit `http://`
+for a cleartext LAN backend. Prefer `https://` for any server on the public internet.
+
 ## 💾 Cache & offline
 
 ```

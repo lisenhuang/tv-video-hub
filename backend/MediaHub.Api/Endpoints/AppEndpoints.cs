@@ -15,6 +15,12 @@ public static class AppEndpoints
 {
     private const string ApkContentType = "application/vnd.android.package-archive";
 
+    // The release APK is committed into the backend repo under wwwroot/app/ and
+    // ships inside the published image, so the backend can hand out a direct
+    // download link with no object storage / DB release row required. Built from
+    // android-tv as a single universal APK (runs on armeabi-v7a + arm64-v8a).
+    private const string BundledApkRelativePath = "app/app-release.apk";
+
     public static IEndpointRouteBuilder MapAppEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/app").WithTags("app");
@@ -40,6 +46,19 @@ public static class AppEndpoints
             HttpContext http, AppReleaseRepository repo, StorageRouter r2, CancellationToken ct) =>
             await RedirectToApkAsync(http, null, repo, r2, ct));
 
+        // GET /api/app/bundled.apk — directly stream the APK committed into this
+        // backend's repo (wwwroot/app/), no object storage or DB release required.
+        // A stable, public, direct-download link for sideloading the current build.
+        // Additive + backward compatible: the self-update endpoints above are unchanged.
+        group.MapGet("/bundled.apk", (IWebHostEnvironment env) =>
+        {
+            var path = BundledApkPath(env);
+            return File.Exists(path)
+                ? Results.File(path, ApkContentType,
+                    fileDownloadName: "tv-video-hub.apk", enableRangeProcessing: true)
+                : Results.NotFound(new { error = "no bundled APK ships with this backend build." });
+        });
+
         // POST /api/app/releases — CI publishes a build (multipart). Requires X-Api-Key.
         group.MapPost("/releases", PublishReleaseAsync)
             .AddEndpointFilter<ApiKeyFilter>()
@@ -47,6 +66,12 @@ public static class AppEndpoints
 
         return app;
     }
+
+    /// <summary>Absolute path to the committed bundled APK under the web root.</summary>
+    private static string BundledApkPath(IWebHostEnvironment env) =>
+        Path.Combine(
+            env.WebRootPath ?? Path.Combine(env.ContentRootPath, "wwwroot"),
+            Path.Combine(BundledApkRelativePath.Split('/')));
 
     private static async Task<IResult> RedirectToApkAsync(
         HttpContext http, int? versionCode, AppReleaseRepository repo, StorageRouter r2, CancellationToken ct)

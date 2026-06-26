@@ -1,0 +1,23 @@
+{
+  // Custom instructions for VS Code's built-in AI "Generate Commit Message"
+  // button (the ✨ in the Source Control panel, powered by GitHub Copilot).
+  // Each entry is a rule the model must follow when summarizing the staged diff.
+  // Docs: https://code.visualstudio.com/docs/copilot/copilot-customization
+  "github.copilot.chat.commitMessageGeneration.instructions": [
+    {
+      "text": "Write a DETAILED commit message, never a single bare line. It must have a concise subject line, a blank line, and then a descriptive body."
+    },
+    {
+      "text": "Subject line: use Conventional Commits format '<type>(<scope>): <summary>'. type is one of feat, fix, refactor, perf, docs, test, build, ci, chore. scope is the touched area (e.g. backend, android-tv, api, db). Keep it under 72 characters, in the imperative mood ('add', not 'added'/'adds'), and with no trailing period."
+    },
+    {
+      "text": "Body: explain WHAT changed and WHY (motivation, context, trade-offs) — not just how. Wrap lines at ~72 characters. When there is more than one notable change, use '- ' bullet points, one per logical change."
+    },
+    {
+      "text": "This repo has a HARD backward-compatibility constraint (already-installed apps + a live backend). If the diff touches the backend API, the on-device DB/cache, or the self-update endpoints, add a line noting the backward-compatibility impact and whether a DB/storage migration is required."
+    },
+    {
+      "text": "Base the message ONLY on the actual staged diff. Do not invent, exaggerate, or omit changes. Reference an issue/PR number only if it is clearly present in the branch name or diff."
+    }
+  ]
+}

@@ -132,7 +132,30 @@ app.Use(async (context, next) =>
 });
 
 // Serve the admin dashboard's static assets from wwwroot.
-app.UseStaticFiles();
+// IMPORTANT: this must run BEFORE routing. The SPA fallback below
+// (/admin/{**rest}) is a catch-all that also matches /admin/app.js and
+// /admin/styles.css. In a WebApplication, if UseRouting() is not called
+// explicitly it is auto-inserted at the very start of the pipeline — so that
+// catch-all endpoint gets matched before UseStaticFiles runs, and
+// StaticFileMiddleware then defers to the matched endpoint, returning
+// index.html for every asset (breaking the admin page entirely). Calling
+// UseStaticFiles() and only THEN UseRouting() lets real files win; just
+// genuine client-side deep links fall through to the SPA fallback.
+app.UseStaticFiles(new StaticFileOptions
+{
+    // The admin dashboard is an SPA: app.js/styles.css/index.html change with every
+    // backend upgrade. Without a Cache-Control directive browsers fall back to
+    // *heuristic* caching and can serve a stale asset after an upgrade (this is exactly
+    // why a fixed page can still look broken until a hard refresh). Force revalidation
+    // for /admin assets — the ETag/Last-Modified still let the server answer 304, so
+    // it's cheap, but the browser always checks. Non-/admin paths keep default caching.
+    OnPrepareResponse = ctx =>
+    {
+        if (ctx.Context.Request.Path.StartsWithSegments("/admin"))
+            ctx.Context.Response.Headers.CacheControl = "no-cache";
+    }
+});
+app.UseRouting();
 
 app.UseAuthentication();
 app.UseAuthorization();
@@ -167,14 +190,23 @@ app.MapAdminEndpoints();
 app.MapMediaEndpoints();
 
 // Serve the admin dashboard SPA at /admin (and /admin/* deep links). This does
-// not intercept /api/* routes.
-app.MapGet("/admin", () => ServeAdminIndex(app.Environment)).ExcludeFromDescription();
-app.MapGet("/admin/{**rest}", () => ServeAdminIndex(app.Environment)).ExcludeFromDescription();
+// not intercept /api/* routes. Real assets (app.js, styles.css, …) are served by
+// UseStaticFiles above; this catch-all only handles extension-less client-side
+// routes. A request for a missing *.js/*.css must 404 rather than return HTML,
+// otherwise a typo'd/renamed asset silently returns index.html and the browser
+// fails to parse HTML as JavaScript — the exact failure this fallback used to cause.
+app.MapGet("/admin", (HttpContext http) => ServeAdminIndex(http, app.Environment)).ExcludeFromDescription();
+app.MapGet("/admin/{**rest}", (HttpContext http, string rest) =>
+    Path.HasExtension(rest) ? Results.NotFound() : ServeAdminIndex(http, app.Environment))
+    .ExcludeFromDescription();
 
 app.Run();
 
-static IResult ServeAdminIndex(IWebHostEnvironment env)
+static IResult ServeAdminIndex(HttpContext http, IWebHostEnvironment env)
 {
+    // Always revalidate the SPA shell so an upgraded dashboard is never masked by a
+    // stale cached index.html (matches the /admin asset policy in UseStaticFiles).
+    http.Response.Headers.CacheControl = "no-cache";
     var path = Path.Combine(env.WebRootPath ?? Path.Combine(env.ContentRootPath, "wwwroot"),
         "admin", "index.html");
     return File.Exists(path)

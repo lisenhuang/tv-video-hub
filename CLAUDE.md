@@ -69,6 +69,35 @@ for **both** targets when touched:
 Do not call a change "done" until the relevant target(s) build. If a build genuinely can't
 be run, state why and what you did to keep it buildable.
 
+## Ship the release APK into the backend on every android-tv change — non-negotiable
+
+The backend serves a **direct APK download** at `GET /api/app/bundled.apk`, backed by a
+**committed** binary at `backend/MediaHub.Api/wwwroot/app/app-release.apk` (it ships inside
+the published image / Docker build). So **whenever you modify `android-tv/` code, rebuild the
+release APK and copy it over that committed file** — otherwise the download link serves a
+stale build.
+
+- **Build the *release* APK** (signed, installable), not debug:
+  ```
+  cd android-tv && ./gradlew :app:assembleRelease
+  cp app/build/outputs/apk/release/app-release.apk \
+     ../backend/MediaHub.Api/wwwroot/app/app-release.apk
+  ```
+  (If `./gradlew` is missing locally, bootstrap gradle `8.11.1` per `gradle-wrapper.properties`.)
+- **One universal APK that runs on BOTH armeabi-v7a (ARM v7) and arm64-v8a (ARM v8).** Keep it
+  a single universal artifact — **do NOT add ABI splits / per-ABI APKs** (that yields separate
+  files and breaks the one fixed download path). The app currently has no native `.so`
+  libraries, so a normal release build is already universal; if you ever add an NDK/native
+  dependency, package both ARM ABIs into the one APK (e.g. `ndk { abiFilters += listOf(
+  "armeabi-v7a", "arm64-v8a") }`) — never ship an APK that drops either ARM ABI.
+- **Keep the path & filename stable** (`wwwroot/app/app-release.apk`). The endpoint and the
+  committed location are a contract; renaming/moving the file 404s the download link.
+- **For a real over-the-air update**, also bump `versionCode` (and `versionName`) in
+  `android-tv/app/build.gradle.kts` and sign with the **same** keystore — Android only installs
+  an update that is higher-versioned and identically signed. Don't change the signing key.
+- This is **additive and backward compatible** with the existing self-update flow
+  (`/api/app/latest`, `/api/app/download`, `/api/app/releases`) — leave those endpoints intact.
+
 ## After coding — build, then hand off with "what to do next"
 
 1. **Build it.** Backend: `dotnet build` (fix every error). Android: it builds in CI

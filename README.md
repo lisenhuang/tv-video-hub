@@ -114,8 +114,9 @@ HTTPS (a reverse proxy such as Caddy/Nginx/Traefik terminating TLS) so playback 
 https://media.example.com
 ```
 
-- 🔐 Use **HTTPS** — Android blocks cleartext `http://` to public hosts by default, and
-  presigned URLs / the admin login should never go out in the clear.
+- 🔐 Prefer **HTTPS** — the app *permits* cleartext (so `http://` works anywhere), but a
+  server on the public internet should use TLS so playback URLs and traffic aren't sent in
+  the clear. Cleartext is really meant for the LAN setup above.
 - 🌍 Works from any network (mobile data, a friend's house), not just home.
 - 🧾 You'll manage a domain, DNS, and certificates (most reverse proxies auto-issue
   Let's Encrypt certs).

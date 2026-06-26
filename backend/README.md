@@ -1,7 +1,9 @@
 # MediaHub backend (.NET 10)
 
 ASP.NET Core minimal API that serves the video catalog to the Android TV app,
-generates short-lived streaming URLs, and hosts APK builds for self-update.
+generates short-lived streaming URLs, and hosts APK builds for self-update. It also
+ships the current release APK inside the image and serves it as a direct download at
+`/api/app/bundled.apk` (committed under `wwwroot/app/`).
 
 - 🚀 **Zero-env setup.** Boots with **no environment variables and no config**, then is
   configured in the **`/admin`** dashboard.
@@ -53,10 +55,11 @@ MediaHub.Api/
 │   └── PasswordHasher.cs    PBKDF2/SHA-256 (framework crypto, no packages)
 ├── Endpoints/
 │   ├── VideoEndpoints.cs    GET /api/videos, GET /api/videos/{id}, POST /api/videos
-│   ├── AppEndpoints.cs      GET /api/app/latest|latest.apk|download, POST /api/app/releases
+│   ├── AppEndpoints.cs      GET /api/app/latest|latest.apk|bundled.apk|download, POST /api/app/releases
 │   ├── MediaEndpoints.cs    GET /api/media/{bucket}/{**key} — signed, range-capable local serving
 │   └── AdminEndpoints.cs    cookie-authed /api/admin/* dashboard API
 ├── wwwroot/admin/           the static admin dashboard (index.html + app.js + styles.css)
+├── wwwroot/app/             the committed release APK (app-release.apk) shipped with the image
 └── Models/                  entities + DTOs
 ```
 
@@ -70,6 +73,7 @@ MediaHub.Api/
 | POST   | `/api/videos`                  | `X-Api-Key` | register/upload a video              |
 | GET    | `/api/app/latest`              | —           | newest APK metadata (204 if none)    |
 | GET    | `/api/app/latest.apk`          | —           | 302 → presigned **latest** APK (fixed path) |
+| GET    | `/api/app/bundled.apk`         | —           | direct download of the APK committed into the image (universal: arm v7 + v8); 404 if none bundled |
 | GET    | `/api/app/download?versionCode`| —           | 302 → presigned APK URL (latest if omitted) |
 | POST   | `/api/app/releases`            | `X-Api-Key` | publish a build (used by CI)         |
 | GET    | `/api/media/{bucket}/{**key}`  | signed URL  | serve a local-storage object (HMAC `sig`+`exp`, range-capable) |
