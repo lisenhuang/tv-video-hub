@@ -15,3 +15,12 @@ services:
       Cloudflare__R2__ApkBucket: ${CF_R2_APK_BUCKET:-apks}
       Api__Key: ${API_KEY}
     restart: unless-stopped
+    # The admin account lives in D1 (survives rebuilds). Only dashboard-set
+    # Cloudflare *overrides* are stored on disk under /app/App_Data; without a
+    # volume they reset on rebuild and the app falls back to the env vars above.
+    # Uncomment to persist dashboard-set overrides across rebuilds:
+    # volumes:
+    #   - mediahub_data:/app/App_Data
+
+# volumes:
+#   mediahub_data:

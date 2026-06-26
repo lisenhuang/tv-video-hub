@@ -34,6 +34,15 @@ public sealed class DatabaseInitializer(D1Client d1, ILogger<DatabaseInitializer
             published_at  TEXT NOT NULL
         );
         """,
+        """
+        CREATE TABLE IF NOT EXISTS admins (
+            id            TEXT PRIMARY KEY,
+            username      TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            password_salt TEXT NOT NULL,
+            created_at    TEXT NOT NULL
+        );
+        """,
     ];
 
     public async Task InitializeAsync(CancellationToken ct = default)

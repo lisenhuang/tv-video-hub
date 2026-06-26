@@ -18,6 +18,11 @@ public sealed class VideoRepository(D1Client d1)
         return rows.Count == 0 ? null : Map(rows[0]);
     }
 
+    public async Task<long> DeleteAsync(string id, CancellationToken ct = default)
+    {
+        return await d1.ExecuteAsync("DELETE FROM videos WHERE id = ?;", [id], ct);
+    }
+
     public async Task InsertAsync(Video v, CancellationToken ct = default)
     {
         await d1.ExecuteAsync(

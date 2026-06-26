@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MediaHub Admin</title>
+  <link rel="stylesheet" href="/admin/styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">▶</span>
+      <span>MediaHub Admin</span>
+    </div>
+    <div class="header-actions">
+      <button id="theme-toggle" class="icon-btn" type="button"
+              title="Toggle theme" aria-label="Toggle color theme"></button>
+      <span id="who" class="who" hidden></span>
+      <button id="logout-btn" class="btn ghost" type="button" hidden>Log out</button>
+    </div>
+  </header>
+
+  <main id="main" class="container">
+    <!-- Global status / error banner -->
+    <div id="banner" class="banner" role="alert" hidden></div>
+
+    <!-- Setup (first run) -->
+    <section id="setup-view" class="card auth-card" hidden>
+      <h1>Create the admin account</h1>
+      <p class="muted">This is the first run. Set up the single admin account.
+         After this, the setup form is closed permanently.</p>
+      <form id="setup-form" class="form" autocomplete="off">
+        <label>Username
+          <input id="setup-username" name="username" type="text" required autocomplete="username" />
+        </label>
+        <label>Password
+          <input id="setup-password" name="password" type="password" required autocomplete="new-password" minlength="8" />
+        </label>
+        <label>Confirm password
+          <input id="setup-confirm" name="confirm" type="password" required autocomplete="new-password" minlength="8" />
+        </label>
+        <button class="btn primary" type="submit">Create admin</button>
+      </form>
+    </section>
+
+    <!-- Login -->
+    <section id="login-view" class="card auth-card" hidden>
+      <h1>Sign in</h1>
+      <form id="login-form" class="form" autocomplete="on">
+        <label>Username
+          <input id="login-username" name="username" type="text" required autocomplete="username" />
+        </label>
+        <label>Password
+          <input id="login-password" name="password" type="password" required autocomplete="current-password" />
+        </label>
+        <button class="btn primary" type="submit">Sign in</button>
+      </form>
+    </section>
+
+    <!-- Dashboard -->
+    <section id="dash-view" hidden>
+      <nav class="tabs" role="tablist" aria-label="Sections">
+        <button class="tab" role="tab" data-tab="videos" aria-selected="true">Videos</button>
+        <button class="tab" role="tab" data-tab="releases" aria-selected="false">Releases</button>
+        <button class="tab" role="tab" data-tab="settings" aria-selected="false">Cloudflare</button>
+      </nav>
+
+      <!-- Videos -->
+      <div class="tab-panel" id="panel-videos" role="tabpanel">
+        <div class="card">
+          <h2>Add a video</h2>
+          <form id="upload-form" class="form" autocomplete="off">
+            <fieldset class="mode">
+              <legend>Source</legend>
+              <label class="radio"><input type="radio" name="vmode" value="upload" checked /> Upload a file</label>
+              <label class="radio"><input type="radio" name="vmode" value="reference" /> Reference an existing R2 object</label>
+            </fieldset>
+            <label>Title
+              <input id="v-title" type="text" name="title" />
+            </label>
+            <label>Description
+              <textarea id="v-desc" name="description" rows="2"></textarea>
+            </label>
+            <label data-mode="upload">File
+              <input id="v-file" type="file" name="file" accept="video/*" />
+            </label>
+            <label data-mode="reference" hidden>Object key
+              <input id="v-objectkey" type="text" name="objectKey" placeholder="videos/foo.mp4" />
+            </label>
+            <div class="row">
+              <label>Thumbnail URL
+                <input id="v-thumb" type="url" name="thumbnailUrl" />
+              </label>
+              <label>Duration (sec)
+                <input id="v-duration" type="number" name="durationSeconds" min="0" />
+              </label>
+            </div>
+            <label data-mode="reference" hidden>MIME type
+              <input id="v-mime" type="text" name="mimeType" placeholder="video/mp4" />
+            </label>
+            <button class="btn primary" type="submit">Add video</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Catalog</h2>
+          <div class="table-wrap">
+            <table id="videos-table">
+              <thead>
+                <tr><th>Title</th><th>Duration</th><th>Created</th><th></th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p id="videos-empty" class="muted" hidden>No videos yet.</p>
+        </div>
+      </div>
+
+      <!-- Releases -->
+      <div class="tab-panel" id="panel-releases" role="tabpanel" hidden>
+        <div class="card">
+          <h2>Latest release</h2>
+          <div id="latest-release" class="kv muted">Loading…</div>
+        </div>
+        <div class="card">
+          <h2>All releases</h2>
+          <p class="muted">Read-only. APKs are published by CI via <code>/api/app/releases</code>.</p>
+          <div class="table-wrap">
+            <table id="releases-table">
+              <thead>
+                <tr><th>Version</th><th>Name</th><th>Size</th><th>min SDK</th><th>Published</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p id="releases-empty" class="muted" hidden>No releases yet.</p>
+        </div>
+      </div>
+
+      <!-- Settings -->
+      <div class="tab-panel" id="panel-settings" role="tabpanel" hidden>
+        <div class="card">
+          <h2>Cloudflare settings</h2>
+          <p class="muted">Overrides the env/appsettings defaults at runtime — no restart needed.
+             Leave a secret blank to keep the current value.</p>
+          <form id="settings-form" class="form" autocomplete="off">
+            <label>Account ID
+              <input id="s-account" name="accountId" type="text" />
+            </label>
+            <label>D1 Database ID
+              <input id="s-dbid" name="d1DatabaseId" type="text" />
+            </label>
+            <label>D1 API Token <span id="s-token-hint" class="hint"></span>
+              <input id="s-token" name="d1ApiToken" type="password" placeholder="leave blank to keep" autocomplete="new-password" />
+            </label>
+            <div class="row">
+              <label>R2 Access Key ID <span id="s-akid-hint" class="hint"></span>
+                <input id="s-akid" name="r2AccessKeyId" type="password" placeholder="leave blank to keep" autocomplete="new-password" />
+              </label>
+              <label>R2 Secret Access Key <span id="s-secret-hint" class="hint"></span>
+                <input id="s-secret" name="r2SecretAccessKey" type="password" placeholder="leave blank to keep" autocomplete="new-password" />
+              </label>
+            </div>
+            <div class="row">
+              <label>Video bucket
+                <input id="s-vbucket" name="r2VideoBucket" type="text" />
+              </label>
+              <label>APK bucket
+                <input id="s-abucket" name="r2ApkBucket" type="text" />
+              </label>
+            </div>
+            <div class="row">
+              <label>R2 Service URL
+                <input id="s-serviceurl" name="r2ServiceUrl" type="text" placeholder="derived from account id if blank" />
+              </label>
+              <label>Presign TTL (min)
+                <input id="s-ttl" name="r2PresignTtlMinutes" type="number" min="1" />
+              </label>
+            </div>
+            <div class="actions">
+              <button class="btn primary" type="submit">Save settings</button>
+              <button id="test-btn" class="btn ghost" type="button">Test connection</button>
+            </div>
+          </form>
+          <div id="test-result" class="test-result" hidden></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/admin/app.js"></script>
+</body>
+</html>

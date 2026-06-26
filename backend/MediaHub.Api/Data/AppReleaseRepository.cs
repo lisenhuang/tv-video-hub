@@ -4,6 +4,13 @@ namespace MediaHub.Api.Data;
 
 public sealed class AppReleaseRepository(D1Client d1)
 {
+    public async Task<IReadOnlyList<AppRelease>> ListAsync(CancellationToken ct = default)
+    {
+        var rows = await d1.QueryAsync(
+            "SELECT * FROM app_releases ORDER BY version_code DESC;", ct: ct);
+        return rows.Select(Map).ToList();
+    }
+
     public async Task<AppRelease?> GetLatestAsync(CancellationToken ct = default)
     {
         var rows = await d1.QueryAsync(
