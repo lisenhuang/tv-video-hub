@@ -9,7 +9,7 @@ namespace MediaHub.Api.Data;
 /// two stay behaviourally identical. Returns either the created video summary or a
 /// validation error message.
 /// </summary>
-public sealed class VideoCreationService(VideoRepository repo, StorageRouter storage)
+public sealed class VideoCreationService(VideoRepository repo, StorageRouter storage, UploadProgressTracker progress)
 {
     public sealed record Result(VideoSummaryDto? Video, string? Error)
     {
@@ -37,9 +37,29 @@ public sealed class VideoCreationService(VideoRepository repo, StorageRouter sto
             : string.IsNullOrWhiteSpace(file.ContentType) ? "video/mp4" : file.ContentType;
         var key = $"videos/{id}/{SanitizeFileName(file.FileName)}";
 
+        // Optional progress tracking: when the client passes an upload id, wrap the
+        // source stream so the server→storage transfer (the part the browser can't see)
+        // is reported and pollable. Absent id → unchanged behaviour (public endpoint).
+        var uploadId = form["uploadId"].ToString();
+
         var videoBucket = await storage.GetVideoBucketAsync(ct);
         await using (var stream = file.OpenReadStream())
-            await storage.PutAsync(videoBucket, key, stream, mime, ct);
+        {
+            var source = string.IsNullOrEmpty(uploadId)
+                ? stream
+                : new ProgressStream(stream, file.Length,
+                    (sent, total) => progress.Report(uploadId, sent, total));
+            try
+            {
+                await storage.PutAsync(videoBucket, key, source, mime, ct);
+                progress.Complete(uploadId); // no-op when uploadId is empty
+            }
+            catch
+            {
+                progress.Fail(uploadId);     // no-op when uploadId is empty
+                throw;
+            }
+        }
 
         var uploaded = new Video
         {

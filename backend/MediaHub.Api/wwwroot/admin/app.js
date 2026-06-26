@@ -353,6 +353,10 @@ function wireVideoForm() {
     const file = $('v-file').files[0];
     if (!file) { banner('Choose a file to upload.', 'error'); return; }
 
+    // Tag this upload so the backend can report its server→storage (R2/local)
+    // transfer and we can poll it for a real percentage during the second phase.
+    const uploadId = newUploadId();
+
     const fd = new FormData();
     fd.append('file', file);
     fd.append('title', $('v-title').value);
@@ -360,6 +364,7 @@ function wireVideoForm() {
     if ($('v-thumb').value) fd.append('thumbnailUrl', $('v-thumb').value);
     if ($('v-duration').value) fd.append('durationSeconds', $('v-duration').value);
     if ($('v-mime').value) fd.append('mimeType', $('v-mime').value);
+    fd.append('uploadId', uploadId);
 
     const submit = $('v-submit');
     submit.disabled = true;
@@ -367,9 +372,18 @@ function wireVideoForm() {
     showProgress(true);
     setProgress(0);
 
-    // XHR (not fetch) so we get realtime upload-progress events. Same endpoint,
-    // same multipart body, same cookie auth — just an observable transport.
-    const { ok, status, data } = await uploadVideo(fd, (fraction) => setProgress(fraction));
+    // Two transfers happen back-to-back, each shown 0→100%:
+    //   1. browser → backend  (XHR upload-progress events: setProgress)
+    //   2. backend → storage  (polled from the backend: setStorageProgress)
+    // onSent fires when (1) finishes and (2) begins, so we start polling then.
+    const { ok, status, data } = await uploadVideo(
+      fd,
+      (fraction) => setProgress(fraction),
+      // Bytes are at the backend; show an indeterminate state, then let polling
+      // upgrade it to a real percentage as soon as the server reports storage bytes.
+      () => { setProgressProcessing(); startStoragePolling(uploadId); }
+    );
+    stopStoragePolling();
 
     if (ok) {
       setProgressDone();
@@ -392,11 +406,12 @@ function wireVideoForm() {
   });
 }
 
-// POST the multipart upload via XMLHttpRequest, reporting upload progress as a
-// 0..1 fraction. Resolves (never rejects) with a fetch-like shape. Once all bytes
-// are sent we flip to the "Processing…" state — the server is still streaming the
-// file into storage (R2/local) and writing the catalog row before it responds.
-function uploadVideo(fd, onProgress) {
+// POST the multipart upload via XMLHttpRequest, reporting browser→backend progress
+// as a 0..1 fraction. Resolves (never rejects) with a fetch-like shape. onSent fires
+// once all bytes reach the backend — from there the server is streaming the file into
+// storage (R2/local) and writing the catalog row before it responds; the caller polls
+// that second leg for a real percentage.
+function uploadVideo(fd, onProgress, onSent) {
   return new Promise((resolve) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/admin/videos');
@@ -405,8 +420,8 @@ function uploadVideo(fd, onProgress) {
     xhr.upload.addEventListener('progress', (ev) => {
       if (ev.lengthComputable) onProgress(ev.loaded / ev.total);
     });
-    // All bytes handed off → switch the bar to the indeterminate "processing" look.
-    xhr.upload.addEventListener('load', () => setProgressProcessing());
+    // All bytes handed off to the backend → hand control to the storage-phase poller.
+    xhr.upload.addEventListener('load', () => { if (onSent) onSent(); });
 
     xhr.addEventListener('load', () => {
       let data = null;
@@ -458,6 +473,56 @@ function setProgressDone() {
 function setProgressFailed() {
   $('upload-progress-bar').className = 'progress-fill failed';
   $('upload-progress-label').textContent = 'Failed';
+}
+
+// Determinate bar for the backend→storage (R2/local) leg, fed by polling.
+function setStorageProgress(fraction) {
+  const pct = Math.max(0, Math.min(100, Math.round(fraction * 100)));
+  const bar = $('upload-progress-bar');
+  bar.className = 'progress-fill';
+  bar.style.width = pct + '%';
+  $('upload-progress-pct').textContent = pct + '%';
+  $('upload-progress-label').textContent = 'Uploading to storage…';
+  $('upload-progress-track').setAttribute('aria-valuenow', String(pct));
+}
+
+// ---- Server→storage progress polling --------------------------------------
+let storagePollTimer = null;
+
+// Poll the backend for how far it has streamed this upload into storage. The main
+// upload XHR is still open (awaiting its response) during this whole phase; this is a
+// separate, lightweight GET. Stops itself on done/failed; the caller also stops it
+// once the upload request resolves.
+function startStoragePolling(uploadId) {
+  stopStoragePolling();
+  let stopped = false;
+  const tick = async () => {
+    let data = null;
+    try {
+      const r = await apiJson('/api/admin/uploads/' + encodeURIComponent(uploadId) + '/progress', 'GET');
+      data = r.data;
+    } catch (_) { /* transient; try again next tick */ }
+    if (stopped) return;
+    if (data && data.found && data.total > 0 && !data.done) {
+      setStorageProgress(data.transferred / data.total);
+    }
+    if (data && (data.done || data.failed)) return; // server-side finished; let the request resolve
+    storagePollTimer = setTimeout(tick, 500);
+  };
+  // Expose a stop hook that also blocks an in-flight tick from rescheduling.
+  storagePollTimer = setTimeout(tick, 400);
+  startStoragePolling._stop = () => { stopped = true; };
+}
+
+function stopStoragePolling() {
+  if (storagePollTimer) { clearTimeout(storagePollTimer); storagePollTimer = null; }
+  if (typeof startStoragePolling._stop === 'function') { startStoragePolling._stop(); startStoragePolling._stop = null; }
+}
+
+// A unique-ish id for one upload, used to correlate the storage-progress poll.
+function newUploadId() {
+  if (window.crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return 'u-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
 }
 
 async function loadVideos() {

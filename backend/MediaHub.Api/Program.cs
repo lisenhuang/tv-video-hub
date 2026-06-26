@@ -53,6 +53,8 @@ builder.Services.AddScoped<VideoRepository>();
 builder.Services.AddScoped<AppReleaseRepository>();
 builder.Services.AddScoped<AdminRepository>();      // DB-backed (admin lives in the DB)
 builder.Services.AddScoped<VideoCreationService>();
+// In-memory server→storage upload progress, polled by the admin dashboard.
+builder.Services.AddSingleton<UploadProgressTracker>();
 // Storage providers: S3 (default) + Local filesystem, both singletons. StorageRouter
 // picks the active one PER CALL from the DB config, so the dashboard can switch at
 // runtime. Endpoints inject StorageRouter (as IObjectStorage / StorageRouter).

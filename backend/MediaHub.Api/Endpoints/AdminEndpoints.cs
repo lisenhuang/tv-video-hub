@@ -212,6 +212,16 @@ public static class AdminEndpoints
             return deleted ? Results.NoContent() : Results.NotFound();
         });
 
+        // GET /api/admin/uploads/{id}/progress — poll the server→storage (R2/local)
+        // transfer for an in-flight upload the dashboard tagged with this id. Lets the
+        // progress bar show a real percentage during the otherwise-opaque "Processing"
+        // phase. Best-effort + in-memory: an unknown id reports found=false / zeros.
+        group.MapGet("/uploads/{id}/progress", (string id, UploadProgressTracker progress) =>
+        {
+            var s = progress.Get(id);
+            return Results.Ok(new UploadProgressDto(s.Transferred, s.Total, s.Done, s.Failed, s.Found));
+        }).RequireAuthorization();
+
         // ---- Settings: DB config (on disk) + storage/api key (in DB) (auth) -
 
         group.MapGet("/settings", async (

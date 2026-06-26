@@ -22,6 +22,13 @@ public sealed record AdminIdentityDto(string Username);
 
 public sealed record AdminVideoListDto(IReadOnlyList<VideoSummaryDto> Videos);
 
+/// <summary>
+/// Snapshot of an in-flight server→storage upload, polled by the dashboard during the
+/// "Uploading to storage…" phase. <c>found</c> is false until the backend starts the
+/// storage PUT (or after the entry expires).
+/// </summary>
+public sealed record UploadProgressDto(long Transferred, long Total, bool Done, bool Failed, bool Found);
+
 // ---- Settings ------------------------------------------------------------
 
 /// <summary>A secret field shown to the dashboard: never the value, only whether
