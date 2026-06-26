@@ -193,6 +193,18 @@ dotnet run --project MediaHub.Api      # zero config needed
 
 ## Run in Docker
 
+Easiest via the **Makefile** (wraps `docker compose`):
+
+```bash
+cd backend
+make up        # build + start in the background → http://localhost:8080/admin
+make logs      # follow logs        make ps     # status + ports
+make health    # curl /api/health   make down   # stop (keeps your DB config)
+make help      # list all targets
+```
+
+Or use compose directly:
+
 ```bash
 cd backend
 docker compose up -d --build           # no .env required; App_Data is a named volume
