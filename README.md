@@ -7,7 +7,8 @@ tv-video-hub/
 ├── backend/          .NET 10 media service (ASP.NET Core minimal API)
 │                     · video catalog + playback URLs
 │                     · APK hosting + "is there a new version?" endpoint
-│                     · storage: Cloudflare R2   · database: Cloudflare D1
+│                     · storage: S3-compatible (R2 / AWS S3 / MinIO / …)
+│                     · database: Cloudflare D1
 ├── android-tv/       Android TV app (Kotlin · Compose for TV · Media3/ExoPlayer)
 │                     · browses & plays videos from the backend
 │                     · self-updates by checking the backend version endpoint
@@ -22,15 +23,29 @@ agree on this contract** — if you change a field, change it in both `backend/`
 
 ---
 
+## 📥 Download the app
+
+| source | link |
+|--------|------|
+| 📦 **GitHub release (latest CI build)** | **[`tv-video-hub.apk`](https://github.com/lisenhuang/tv-video-hub/releases/latest/download/tv-video-hub.apk)** |
+| 🌐 Your backend (fixed path) | `https://<your-backend>/api/app/download` → always the latest signed APK |
+
+> ⚠️ Signed with the repo's **public convenience keystore** (auto-build only, **not for
+> production** — see [`android-tv/README.md`](android-tv/README.md#-signing)). The GitHub link
+> appears once CI has published a release on `main`. Inside the app, launch checks
+> `GET /api/app/latest` and pops an **"Update available"** modal when a newer build exists.
+
+---
+
 ## How it fits together
 
 ```
-                 ┌─────────────────────────────────────────────┐
-                 │                Cloudflare                    │
-                 │   R2 (object store)        D1 (SQLite DB)     │
-                 │   · video files            · videos table     │
-                 │   · apk files              · app_releases     │
-                 └───────▲───────────────────────▲──────────────┘
+                 ┌──────────────────────────┐   ┌──────────────────────┐
+                 │  S3-compatible storage   │   │   Cloudflare D1       │
+                 │  (R2 / AWS / MinIO / …)   │   │   (SQLite DB)         │
+                 │  · video files           │   │   · videos table      │
+                 │  · apk files             │   │   · app_releases      │
+                 └───────────▲──────────────┘   └──────────▲───────────┘
                          │ S3 API / presign       │ D1 REST query
                  ┌───────┴───────────────────────┴──────────────┐
                  │           backend  (.NET 10, container)        │
@@ -155,20 +170,25 @@ reference an object already in R2 (`application/json` with `objectKey`).
 
 ## Configuration (backend)
 
-All Cloudflare credentials are supplied via environment variables / user-secrets —
-never commit them. See [`backend/README.md`](backend/README.md) for the full list and
-how to provision the D1 database and R2 buckets. Quick reference:
+Credentials via env vars / user-secrets — never commit. **Database = Cloudflare D1**;
+**object storage = any S3-compatible store** (R2 default; AWS S3, MinIO, B2, …). Full
+list + provider presets in [`backend/README.md`](backend/README.md). Quick reference:
 
-| env var                           | purpose                              |
-|-----------------------------------|--------------------------------------|
-| `Cloudflare__AccountId`           | Cloudflare account id                |
-| `Cloudflare__D1__DatabaseId`      | D1 database id                       |
-| `Cloudflare__D1__ApiToken`        | API token with D1 edit permission    |
-| `Cloudflare__R2__AccessKeyId`     | R2 S3 access key id                  |
-| `Cloudflare__R2__SecretAccessKey` | R2 S3 secret                         |
-| `Cloudflare__R2__VideoBucket`     | bucket holding video files           |
-| `Cloudflare__R2__ApkBucket`       | bucket holding apk files             |
-| `Api__Key`                        | shared secret for `X-Api-Key` writes |
+| env var                      | purpose                                         |
+|------------------------------|-------------------------------------------------|
+| `Cloudflare__AccountId`      | Cloudflare account id (D1)                       |
+| `Cloudflare__D1__DatabaseId` | D1 database id                                   |
+| `Cloudflare__D1__ApiToken`   | API token with D1 edit permission                |
+| `Storage__ServiceUrl`        | S3 endpoint (empty = AWS regional endpoint)      |
+| `Storage__Region`            | `auto` (R2) · `us-east-1` (AWS) · region (MinIO) |
+| `Storage__AccessKeyId`       | S3 access key id                                 |
+| `Storage__SecretAccessKey`   | S3 secret                                        |
+| `Storage__VideoBucket`       | bucket holding video files                       |
+| `Storage__ApkBucket`         | bucket holding apk files                         |
+| `Storage__ForcePathStyle`    | `true` (R2/MinIO) · `false` (AWS virtual-hosted) |
+| `Api__Key`                   | shared secret for `X-Api-Key` writes             |
+
+An admin dashboard at **`/admin`** can edit D1 + storage config live (no restart).
 
 ## Configuration (android)
 

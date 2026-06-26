@@ -17,6 +17,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # create the GitHub Release that hosts the downloadable APK
     env:
       # Optional release signing — provide these repo secrets for installable,
       # self-updatable release APKs (Android requires a stable signing key across
@@ -68,11 +70,25 @@ jobs:
           echo "versionCode=$(grep versionCode version.txt | cut -d= -f2)" >> "$GITHUB_OUTPUT"
           echo "versionName=$(grep versionName version.txt | cut -d= -f2)" >> "$GITHUB_OUTPUT"
 
+      - name: Stage fixed-name APK
+        run: cp "${{ steps.apk.outputs.path }}" "$RUNNER_TEMP/tv-video-hub.apk"
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: tv-video-hub-apk
-          path: android-tv/${{ steps.apk.outputs.path }}
+          path: ${{ runner.temp }}/tv-video-hub.apk
+
+      # Publish to a GitHub Release so anyone can click-download the latest APK at the
+      # fixed URL: .../releases/latest/download/tv-video-hub.apk
+      - name: Publish GitHub Release
+        if: ${{ github.ref == 'refs/heads/main' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: app-v${{ steps.apk.outputs.versionCode }}
+          name: TV Video Hub ${{ steps.apk.outputs.versionName }} (build ${{ steps.apk.outputs.versionCode }})
+          files: ${{ runner.temp }}/tv-video-hub.apk
+          fail_on_unmatched_files: true
 
       # Publish to the backend release endpoint so the app's self-update can find it.
       - name: Publish APK to backend

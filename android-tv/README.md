@@ -50,8 +50,27 @@ downloads survive URL refresh **and** app upgrades. *(See `CLAUDE.md` — don't 
 
 `REQUEST_INSTALL_PACKAGES` isn't enough on API 26+: the user must grant *"install unknown
 apps"*. The app detects this and deep-links to the setting. For managed TV fleets use a
-privileged/device-owner installer. CI signs releases with a **stable keystore** (secrets) so
-updates install over each other.
+privileged/device-owner installer.
+
+## 🔑 Signing
+
+| | |
+|---|---|
+| **Default** | committed convenience keystore `keystore/ci-signing.jks` (alias `ci`, pass `tvvideohub`) — so local & CI builds are consistently signed with **zero setup** |
+| ⚠️ **Warning** | that keystore + password are **public** in this repo. Convenient for auto-builds only — **NOT for production**. Anyone could re-sign an APK with it. |
+| **Production** | override with **your own** keystore via env/`-P`: `KEYSTORE_FILE`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD` (e.g. `ANDROID_KEYSTORE_BASE64` secret in CI) |
+
+Android only updates an app when the new APK is signed with the **same** key, so keep one
+fixed key across releases.
+
+## 📥 Get the app
+
+| source | link |
+|---|---|
+| GitHub (latest CI build) | `https://github.com/lisenhuang/tv-video-hub/releases/latest/download/tv-video-hub.apk` |
+| Your backend (fixed path) | `https://<your-backend>/api/app/download` → always the latest signed APK |
+
+The repo link also appears in the root README so visitors can click-download it.
 
 ## 🚀 Build & sideload
 

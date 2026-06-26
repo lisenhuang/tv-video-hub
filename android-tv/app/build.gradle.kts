@@ -29,25 +29,30 @@ android {
         resValue("string", "backend_base_url", backendBaseUrl)
     }
 
-    // Release signing. Android only lets a build UPDATE an installed app if both are
-    // signed with the SAME key — so CI must sign every release with one persistent
-    // keystore (provided via env vars / -P properties; see android-tv/README.md).
-    // When no keystore is supplied (e.g. a local `assembleRelease`), we fall back to the
-    // debug key so the build still succeeds and produces an installable APK.
-    val keystorePath: String? =
-        System.getenv("KEYSTORE_FILE") ?: (project.findProperty("KEYSTORE_FILE") as String?)
+    // Release signing. Android only updates an installed app when the new APK is signed
+    // with the SAME key, so every build must use one persistent keystore.
+    //
+    // Default = the committed CONVENIENCE keystore (keystore/ci-signing.jks), so local and
+    // CI builds are consistently signed and installable with zero setup.
+    // ⚠️ That keystore + password are PUBLIC (in the repo) — convenient for auto-build only,
+    //    NOT for production. For prod, override with your OWN keystore via env / -P:
+    //    KEYSTORE_FILE, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD. See android-tv/README.md.
+    val keystorePath: String = System.getenv("KEYSTORE_FILE")
+        ?: (project.findProperty("KEYSTORE_FILE") as String?)
+        ?: rootProject.file("keystore/ci-signing.jks").absolutePath
+    val storePass = System.getenv("KEYSTORE_PASSWORD")
+        ?: (project.findProperty("KEYSTORE_PASSWORD") as String?) ?: "tvvideohub"
+    val keyAliasName = System.getenv("KEY_ALIAS")
+        ?: (project.findProperty("KEY_ALIAS") as String?) ?: "ci"
+    val keyPass = System.getenv("KEY_PASSWORD")
+        ?: (project.findProperty("KEY_PASSWORD") as String?) ?: "tvvideohub"
 
     signingConfigs {
         create("release") {
-            if (keystorePath != null) {
-                storeFile = file(keystorePath)
-                storePassword =
-                    System.getenv("KEYSTORE_PASSWORD") ?: (project.findProperty("KEYSTORE_PASSWORD") as String?)
-                keyAlias =
-                    System.getenv("KEY_ALIAS") ?: (project.findProperty("KEY_ALIAS") as String?)
-                keyPassword =
-                    System.getenv("KEY_PASSWORD") ?: (project.findProperty("KEY_PASSWORD") as String?)
-            }
+            storeFile = file(keystorePath)
+            storePassword = storePass
+            keyAlias = keyAliasName
+            keyPassword = keyPass
         }
     }
 
@@ -61,9 +66,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig =
-                if (keystorePath != null) signingConfigs.getByName("release")
-                else signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 

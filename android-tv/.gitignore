@@ -25,11 +25,14 @@ captures/
 .externalNativeBuild/
 .cxx/
 
-# Keystores / secrets — never commit
+# Keystores / secrets — never commit YOUR keystores
 *.jks
 *.keystore
 keystore.properties
 signing.properties
+# EXCEPTION: the throwaway convenience CI keystore is committed on purpose.
+# It is PUBLIC and NOT for production (see README). Do not put a real key here.
+!keystore/ci-signing.jks
 
 # Logs
 *.log
