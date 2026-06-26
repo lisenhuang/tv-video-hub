@@ -37,15 +37,21 @@ android {
     // ⚠️ That keystore + password are PUBLIC (in the repo) — convenient for auto-build only,
     //    NOT for production. For prod, override with your OWN keystore via env / -P:
     //    KEYSTORE_FILE, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD. See android-tv/README.md.
-    val keystorePath: String = System.getenv("KEYSTORE_FILE")
-        ?: (project.findProperty("KEYSTORE_FILE") as String?)
-        ?: rootProject.file("keystore/ci-signing.jks").absolutePath
-    val storePass = System.getenv("KEYSTORE_PASSWORD")
-        ?: (project.findProperty("KEYSTORE_PASSWORD") as String?) ?: "tvvideohub"
-    val keyAliasName = System.getenv("KEY_ALIAS")
-        ?: (project.findProperty("KEY_ALIAS") as String?) ?: "ci"
-    val keyPass = System.getenv("KEY_PASSWORD")
-        ?: (project.findProperty("KEY_PASSWORD") as String?) ?: "tvvideohub"
+    // Resolve from env, then -P property, falling back to the default. IMPORTANT: CI maps
+    // undefined secrets to EMPTY-STRING env vars (not unset), so blanks must be treated as
+    // absent — otherwise release builds try to sign with an empty password and fail.
+    fun signingValue(name: String, default: String): String =
+        System.getenv(name)?.takeIf { it.isNotBlank() }
+            ?: (project.findProperty(name) as String?)?.takeIf { it.isNotBlank() }
+            ?: default
+
+    val keystorePath: String =
+        System.getenv("KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
+            ?: (project.findProperty("KEYSTORE_FILE") as String?)?.takeIf { it.isNotBlank() }
+            ?: rootProject.file("keystore/ci-signing.jks").absolutePath
+    val storePass = signingValue("KEYSTORE_PASSWORD", "tvvideohub")
+    val keyAliasName = signingValue("KEY_ALIAS", "ci")
+    val keyPass = signingValue("KEY_PASSWORD", "tvvideohub")
 
     signingConfigs {
         create("release") {
