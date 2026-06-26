@@ -68,6 +68,64 @@ agree on this contract** — if you change a field, change it in both `backend/`
 
 ---
 
+## Where to run it — two setups
+
+The backend is one small container; pick where it lives based on whether you want it
+reachable only at home or from anywhere.
+
+> 📱 **You don't bake the backend URL into the app.** On **first launch** the app shows a
+> setup screen — type your backend's address, tap **Test**, and **Save**. It's stored
+> on-device and you can change it later in **Settings**. (The same APK works against any
+> backend; nothing is hard-coded per install.)
+
+### 🏠 1. At home — on a PC or your OpenWRT router *(recommended for most people)*
+
+Run the backend on a machine on your LAN — a spare PC/mini-PC, a NAS, or an OpenWRT
+router that can run containers. **Use Docker** — it's the simplest, self-contained way
+to run it (see [`backend/README.md`](backend/README.md#run-in-docker)):
+
+```bash
+cd backend
+make up        # → http://localhost:8080/admin
+```
+
+Then, on the app's first-run setup screen, enter the **host's LAN IP and port**
+(not `localhost` — that would mean the TV/phone itself). Find the host's IP
+(e.g. `192.168.1.50`) and type:
+
+```
+http://192.168.1.50:8080
+```
+
+- ⚠️ **Include the `http://`** — if you leave the scheme off, the app assumes `https://`,
+  which a plain-LAN backend won't answer. For home use you want explicit `http://`.
+- ✅ No domain, no public IP, no port-forwarding — everything stays on the LAN.
+- ✅ The TV and the backend just need to be on the **same network**.
+- 💡 Give the host a **static / DHCP-reserved IP** so the saved URL keeps working.
+
+### 🌐 2. On a server — reachable from anywhere *(needs a domain)*
+
+Run the backend on a VPS / cloud host so the app works off your home network. Here you
+normally want a **domain name** pointing at the server (DNS `A`/`AAAA` record), plus
+HTTPS (a reverse proxy such as Caddy/Nginx/Traefik terminating TLS) so playback and the
+`/admin` dashboard run over `https://`. On the app's setup screen enter that domain:
+
+```
+https://media.example.com
+```
+
+- 🔐 Use **HTTPS** — Android blocks cleartext `http://` to public hosts by default, and
+  presigned URLs / the admin login should never go out in the clear.
+- 🌍 Works from any network (mobile data, a friend's house), not just home.
+- 🧾 You'll manage a domain, DNS, and certificates (most reverse proxies auto-issue
+  Let's Encrypt certs).
+
+> Either way the backend itself is identical — only **where it runs** and **what URL you
+> enter in the app** differ. Storage (R2/S3 or local disk) and the database (D1 or SQL)
+> are configured the same way at `/admin` in both setups.
+
+---
+
 ## API contract (v1)
 
 Base URL is configured per environment. All responses are JSON (`application/json`).
@@ -204,8 +262,14 @@ details in [`backend/README.md`](backend/README.md).
 
 ## Configuration (android)
 
-`android-tv/app/src/main/res/values/config.xml` → `backend_base_url`, or override at
-build time with `-PbackendBaseUrl=https://…`. See [`android-tv/README.md`](android-tv/README.md).
+**The backend URL is not baked into the app.** On **first launch** the app shows a setup
+screen — the user types the backend's address, taps **Test** (a live reachability check),
+and **Saves** it. The value is stored on-device (SharedPreferences) and can be changed
+later in **Settings**, so the same APK works against any backend.
+
+The build-time `-PbackendBaseUrl=…` Gradle property (default `https://media.example.com`)
+only **pre-fills** that first-run field — it's a convenience default, not a hard-coded URL.
+See [`android-tv/README.md`](android-tv/README.md).
 
 ## Status
 
