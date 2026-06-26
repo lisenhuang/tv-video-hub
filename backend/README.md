@@ -111,6 +111,23 @@ per secret. Saving a blank secret field leaves the stored value unchanged.
 config, and release key live **in the database**. Env vars can OPTIONALLY seed the DB
 connection (a dashboard value wins). All config is live-reloaded (no restart).
 
+### 🔶 First run: connect Cloudflare D1
+
+On first launch the dashboard opens on **Step 1 — Connect a database** (the same steps are
+shown inline when you pick **Cloudflare D1**):
+
+1. **Create the database** — Cloudflare dashboard → **Storage & Databases → D1 SQL Database
+   → Create**. Open it and copy the **Database ID**.  *(CLI: `wrangler d1 create tv-video-hub`.)*
+2. **Account ID** — Cloudflare dashboard right sidebar, or the hex in
+   `dash.cloudflare.com/<account-id>`.
+3. **API Token** — profile menu → **My Profile → API Tokens → Create Token → Create Custom
+   Token**, add permission **Account › D1 › Edit**, create, and copy the token.
+4. In the dashboard pick **Cloudflare D1**, paste **Account ID / D1 Database ID / D1 API
+   Token**, and click **Test & continue**. Tables are created automatically on first connect.
+
+Then create the admin (Step 2) and configure object storage — Cloudflare **R2** or any
+S3-compatible store — plus the release key (Step 3). Docs: <https://developers.cloudflare.com/d1/get-started/>.
+
 **🗄️ Database — pluggable (`Database__*` + D1 fields from `Cloudflare__*`)**
 
 | variable                     | notes                                                       |
@@ -175,6 +192,18 @@ dotnet run --project MediaHub.Api      # zero config needed
 ```
 
 ## Run in Docker
+
+Easiest via the **Makefile** (wraps `docker compose`):
+
+```bash
+cd backend
+make up        # build + start in the background → http://localhost:8080/admin
+make logs      # follow logs        make ps     # status + ports
+make health    # curl /api/health   make down   # stop (keeps your DB config)
+make help      # list all targets
+```
+
+Or use compose directly:
 
 ```bash
 cd backend
