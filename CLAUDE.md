@@ -54,6 +54,21 @@ compatible with every shipped client:
   cleanly on top of the real production database without data loss and without manual
   fix-up. No destructive `DROP`/`DELETE` of existing data unless explicitly approved.
 
+## Always build after changing code (BOTH apps) — non-negotiable
+
+Every time you modify code, **build it and fix every build error before handing off** —
+for **both** targets when touched:
+
+- **.NET backend** — run `dotnet build` in `backend/` and resolve all errors (and avoid
+  introducing warnings). Never hand off backend code that doesn't compile.
+- **Android APK** — build it: `cd android-tv && ./gradlew :app:assembleDebug` (or
+  `assembleRelease`). If the Android SDK isn't available locally, say so explicitly and at
+  minimum keep it compile-clean (consistent version catalog, imports, opt-ins) so the CI
+  build is green; treat a red CI build as a build error to fix, not to ignore.
+
+Do not call a change "done" until the relevant target(s) build. If a build genuinely can't
+be run, state why and what you did to keep it buildable.
+
 ## After coding — build, then hand off with "what to do next"
 
 1. **Build it.** Backend: `dotnet build` (fix every error). Android: it builds in CI
