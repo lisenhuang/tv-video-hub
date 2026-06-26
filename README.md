@@ -7,7 +7,7 @@ tv-video-hub/
 ├── backend/          .NET 10 media service (ASP.NET Core minimal API)
 │                     · video catalog + playback URLs
 │                     · APK hosting + "is there a new version?" endpoint
-│                     · storage: S3-compatible (R2 / AWS S3 / MinIO / …)
+│                     · storage: S3-compatible (R2 / AWS S3 / MinIO / …) OR local disk
 │                     · database: Cloudflare D1 OR self-hosted SQL (SQLite/Postgres/SQL Server)
 │                     · zero-env: configured via the /admin dashboard
 ├── android-tv/       Android TV app (Kotlin · Compose for TV · Media3/ExoPlayer)
@@ -102,7 +102,10 @@ List the playable catalog, newest first.
 
 ### `GET /api/videos/{id}`
 Details for one video **plus a ready-to-play URL**. The `playbackUrl` is a
-short-lived presigned R2 URL (default TTL 6h) that ExoPlayer can stream directly.
+short-lived URL (default TTL 6h) that ExoPlayer can stream directly — a presigned R2/S3
+URL, or, when the **Local disk** provider is selected, an HMAC-signed
+`{backend}/api/media/…` URL served by the backend itself (range-capable). Either way the
+app just streams the URL — no app change.
 
 ```jsonc
 // 200
@@ -188,7 +191,10 @@ reference an object already in R2 (`application/json` with `objectKey`).
 - 🗄️ **Database (pluggable):** Cloudflare **D1** *or* self-hosted SQL via EF Core —
   **SQLite / PostgreSQL / SQL Server** (MySQL selectable; provider not bundled, see
   `backend/README.md`).
-- 📦 **Object storage:** any **S3-compatible** store (R2 default; AWS S3, MinIO, B2, …).
+- 📦 **Object storage:** any **S3-compatible** store (R2 default; AWS S3, MinIO, B2, …),
+  **or Local disk** — store videos/APKs on the server's own filesystem (a media directory,
+  default `App_Data/media`), served at `/api/media/…` via short-lived HMAC-signed,
+  range-capable URLs. Persist that directory (Docker volume). See `backend/README.md`.
 
 Only the DB connection can be seeded via env (`Database__Provider`,
 `Database__ConnectionString`, `Cloudflare__*` for D1). 💾 **Stateless upgrades:** persist

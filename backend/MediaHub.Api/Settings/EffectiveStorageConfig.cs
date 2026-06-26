@@ -8,6 +8,24 @@ namespace MediaHub.Api.Settings;
 /// </summary>
 public sealed class EffectiveStorageConfig
 {
+    /// <summary>
+    /// Active storage provider: <c>"s3"</c> (default — any S3-compatible store) or
+    /// <c>"local"</c> (the server's own filesystem, served at <c>/api/media/...</c>).
+    /// </summary>
+    public required string Provider { get; init; }
+
+    /// <summary>Filesystem base directory for the local provider (e.g. <c>App_Data/media</c>).</summary>
+    public required string LocalBasePath { get; init; }
+
+    /// <summary>
+    /// Server-managed HMAC key used to sign local <c>/api/media/...</c> URLs (base64).
+    /// Never exposed in settings responses; auto-generated on first use if absent.
+    /// </summary>
+    public required string LocalSigningKey { get; init; }
+
+    /// <summary>True when the active provider is the local filesystem.</summary>
+    public bool IsLocal => string.Equals(Provider, "local", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>S3 endpoint URL. Empty means "use the AWS regional endpoint for <see cref="Region"/>".</summary>
     public required string ServiceUrl { get; init; }
 

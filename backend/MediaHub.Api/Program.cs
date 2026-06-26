@@ -50,7 +50,12 @@ builder.Services.AddScoped<VideoRepository>();
 builder.Services.AddScoped<AppReleaseRepository>();
 builder.Services.AddScoped<AdminRepository>();      // DB-backed (admin lives in the DB)
 builder.Services.AddScoped<VideoCreationService>();
+// Storage providers: S3 (default) + Local filesystem, both singletons. StorageRouter
+// picks the active one PER CALL from the DB config, so the dashboard can switch at
+// runtime. Endpoints inject StorageRouter (as IObjectStorage / StorageRouter).
 builder.Services.AddSingleton<S3Storage>();
+builder.Services.AddSingleton<LocalStorage>();
+builder.Services.AddSingleton<StorageRouter>();
 builder.Services.AddSingleton<PasswordHasher>();
 builder.Services.AddScoped<ApiKeyFilter>();
 
@@ -159,6 +164,7 @@ app.MapGet("/api/health", () => Results.Ok(new { status = "ok", service = "tv-vi
 app.MapVideoEndpoints();
 app.MapAppEndpoints();
 app.MapAdminEndpoints();
+app.MapMediaEndpoints();
 
 // Serve the admin dashboard SPA at /admin (and /admin/* deep links). This does
 // not intercept /api/* routes.

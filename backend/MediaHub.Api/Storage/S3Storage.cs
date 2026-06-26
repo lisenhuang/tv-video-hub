@@ -24,7 +24,7 @@ namespace MediaHub.Api.Storage;
 ///   so the SDK targets real AWS S3 (with <c>ForcePathStyle</c> still honored).</item>
 /// </list>
 /// </summary>
-public sealed class S3Storage(AppConfigProvider appConfig)
+public sealed class S3Storage(AppConfigProvider appConfig) : IObjectStorage
 {
     private readonly object _gate = new();
     private IAmazonS3? _s3;
@@ -85,10 +85,14 @@ public sealed class S3Storage(AppConfigProvider appConfig)
         }
     }
 
-    /// <summary>Generate a short-lived presigned GET URL for streaming/download.</summary>
+    /// <summary>
+    /// Generate a short-lived presigned GET URL for streaming/download.
+    /// <paramref name="baseUrl"/> is part of the <see cref="IObjectStorage"/> contract
+    /// (used by the local provider) and is ignored here.
+    /// </summary>
     public async Task<(string Url, DateTimeOffset ExpiresAt)> GetPresignedGetUrlAsync(
         string bucket, string key, TimeSpan? ttl = null, string? responseContentType = null,
-        CancellationToken ct = default)
+        string? baseUrl = null, CancellationToken ct = default)
     {
         var cfg = await ConfigAsync(ct);
         var s3 = Client(cfg);

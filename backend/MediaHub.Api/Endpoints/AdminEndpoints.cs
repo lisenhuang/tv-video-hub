@@ -246,6 +246,11 @@ public static class AdminEndpoints
                         statusCode: StatusCodes.Status503ServiceUnavailable);
 
                 var updates = new Dictionary<string, string>(StringComparer.Ordinal);
+                // Provider selector ("s3" | "local"); normalize unknown values to "s3".
+                if (body.StorageProvider is { } prov)
+                    updates[AppConfigProvider.KeyStorageProvider] =
+                        string.Equals(prov, "local", StringComparison.OrdinalIgnoreCase) ? "local" : "s3";
+                Put(updates, AppConfigProvider.KeyStorageLocalBasePath, body.StorageLocalBasePath, allowBlank: false);
                 Put(updates, AppConfigProvider.KeyStorageServiceUrl, body.StorageServiceUrl, allowBlank: true);
                 Put(updates, AppConfigProvider.KeyStorageRegion, body.StorageRegion, allowBlank: true);
                 Put(updates, AppConfigProvider.KeyStorageVideoBucket, body.StorageVideoBucket, allowBlank: true);
@@ -267,10 +272,10 @@ public static class AdminEndpoints
         }).RequireAuthorization();
 
         group.MapPost("/settings/test", async (
-            DatabaseService db, S3Storage storage, CancellationToken ct) =>
+            DatabaseService db, StorageRouter storage, AppConfigProvider appConfig, CancellationToken ct) =>
         {
             var dbResult = await TestDatabaseAsync(db, ct);
-            var storageResult = await TestStorageAsync(storage, ct);
+            var storageResult = await TestStorageAsync(storage, appConfig, ct);
             return Results.Ok(new SettingsTestDto(dbResult, storageResult));
         }).RequireAuthorization();
 
@@ -341,7 +346,8 @@ public static class AdminEndpoints
     }
 
     private static bool StorageOrKeyTouched(SettingsUpdateRequest b) =>
-        b.StorageServiceUrl is not null || b.StorageRegion is not null
+        b.StorageProvider is not null || b.StorageLocalBasePath is not null
+        || b.StorageServiceUrl is not null || b.StorageRegion is not null
         || b.StorageVideoBucket is not null || b.StorageApkBucket is not null
         || b.StorageForcePathStyle is not null || b.StoragePresignTtlMinutes is not null
         || b.StorageDisablePayloadSigning is not null || b.StorageUseChecksumWhenRequired is not null
@@ -350,9 +356,12 @@ public static class AdminEndpoints
         || !string.IsNullOrWhiteSpace(b.ApiKey);
 
     private static bool StorageConfigured(EffectiveStorageConfig st) =>
-        !string.IsNullOrWhiteSpace(st.AccessKeyId)
-        && !string.IsNullOrWhiteSpace(st.SecretAccessKey)
-        && !string.IsNullOrWhiteSpace(st.VideoBucket);
+        st.IsLocal
+            // Local provider: a media directory + bucket names are enough (no S3 creds).
+            ? !string.IsNullOrWhiteSpace(st.LocalBasePath) && !string.IsNullOrWhiteSpace(st.VideoBucket)
+            : !string.IsNullOrWhiteSpace(st.AccessKeyId)
+              && !string.IsNullOrWhiteSpace(st.SecretAccessKey)
+              && !string.IsNullOrWhiteSpace(st.VideoBucket);
 
     private static async Task<SettingsViewDto> MaskedViewAsync(
         SettingsProvider settings, AppConfigProvider appConfig, CancellationToken ct)
@@ -369,6 +378,8 @@ public static class AdminEndpoints
             DatabaseConnectionString: Mask(dbc.ConnectionString),
             DatabaseConfigured: dbc.IsConfigured,
             // Object storage (in DB)
+            StorageProvider: st.IsLocal ? "local" : "s3",
+            StorageLocalBasePath: st.LocalBasePath,
             StorageServiceUrl: st.ServiceUrl,
             StorageRegion: st.Region,
             StorageAccessKeyId: Mask(st.AccessKeyId),
@@ -407,13 +418,17 @@ public static class AdminEndpoints
         }
     }
 
-    private static async Task<ConnectionResultDto> TestStorageAsync(S3Storage storage, CancellationToken ct)
+    private static async Task<ConnectionResultDto> TestStorageAsync(
+        StorageRouter storage, AppConfigProvider appConfig, CancellationToken ct)
     {
         try
         {
+            var cfg = await appConfig.GetStorageAsync(ct);
             var bucket = await storage.GetVideoBucketAsync(ct);
             await storage.ProbeAsync(bucket, ct);
-            return new ConnectionResultDto(true, $"Object storage reachable (bucket '{bucket}').");
+            return cfg.IsLocal
+                ? new ConnectionResultDto(true, $"Local media directory writable ('{cfg.LocalBasePath}/{bucket}').")
+                : new ConnectionResultDto(true, $"Object storage reachable (bucket '{bucket}').");
         }
         catch (Exception ex)
         {

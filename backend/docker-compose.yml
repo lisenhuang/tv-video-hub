@@ -10,6 +10,10 @@ services:
     # Persist App_Data so a NEW image/container reuses the same DB connection — and
     # therefore all the admin/storage/data, which live in the DB. If you pick the
     # 'sqlite' provider, the .db file also lives here.
+    #
+    # 💾 LOCAL DISK storage: the default media dir App_Data/media is already on this
+    # volume, so videos/APKs persist. Media can get large — consider a dedicated
+    # mount instead, e.g.:  - mediahub_media:/app/App_Data/media
     volumes:
       - mediahub_data:/app/App_Data
     restart: unless-stopped
