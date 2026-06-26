@@ -114,6 +114,7 @@ async function init() {
   wireLogin();
   wireTabs();
   wireVideoForm();
+  wirePlayer();
   wireSettings();
 
   await refreshState();
@@ -340,21 +341,99 @@ function wireVideoForm() {
     if ($('v-duration').value) fd.append('durationSeconds', $('v-duration').value);
     if ($('v-mime').value) fd.append('mimeType', $('v-mime').value);
 
-    const res = await api('/api/admin/videos', { method: 'POST', body: fd });
-    let data = null;
-    try { data = await res.json(); } catch (_) { /* may be empty */ }
+    const submit = $('v-submit');
+    submit.disabled = true;
+    banner('');
+    showProgress(true);
+    setProgress(0);
 
-    if (res.ok) {
+    // XHR (not fetch) so we get realtime upload-progress events. Same endpoint,
+    // same multipart body, same cookie auth — just an observable transport.
+    const { ok, status, data } = await uploadVideo(fd, (fraction) => setProgress(fraction));
+
+    if (ok) {
+      setProgressDone();
       banner('Video added.', 'success');
       $('upload-form').reset();
       titleEdited = false; // form cleared → let the next file auto-fill the title again
+      // Briefly leave the completed bar visible, then tuck it away.
+      setTimeout(() => showProgress(false), 900);
       await loadVideos();
-    } else if (res.status === 401) {
-      await refreshState();
     } else {
-      banner((data && data.error) || 'Failed to add video.', 'error');
+      setProgressFailed();
+      showProgress(false);
+      if (status === 401) {
+        await refreshState();
+      } else {
+        banner((data && data.error) || 'Failed to add video.', 'error');
+      }
     }
+    submit.disabled = false;
   });
+}
+
+// POST the multipart upload via XMLHttpRequest, reporting upload progress as a
+// 0..1 fraction. Resolves (never rejects) with a fetch-like shape. Once all bytes
+// are sent we flip to the "Processing…" state — the server is still streaming the
+// file into storage (R2/local) and writing the catalog row before it responds.
+function uploadVideo(fd, onProgress) {
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/admin/videos');
+    xhr.withCredentials = true; // carry the admin session cookie
+
+    xhr.upload.addEventListener('progress', (ev) => {
+      if (ev.lengthComputable) onProgress(ev.loaded / ev.total);
+    });
+    // All bytes handed off → switch the bar to the indeterminate "processing" look.
+    xhr.upload.addEventListener('load', () => setProgressProcessing());
+
+    xhr.addEventListener('load', () => {
+      let data = null;
+      try { data = JSON.parse(xhr.responseText); } catch (_) { /* may be empty */ }
+      resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, data });
+    });
+    xhr.addEventListener('error', () => resolve({ ok: false, status: 0, data: null }));
+    xhr.addEventListener('abort', () => resolve({ ok: false, status: 0, data: null }));
+
+    xhr.send(fd);
+  });
+}
+
+// ---- Upload-progress UI ----------------------------------------------------
+function showProgress(visible) {
+  show($('upload-progress'), visible);
+}
+
+function setProgress(fraction) {
+  const pct = Math.max(0, Math.min(100, Math.round(fraction * 100)));
+  const bar = $('upload-progress-bar');
+  bar.className = 'progress-fill';
+  bar.style.width = pct + '%';
+  $('upload-progress-pct').textContent = pct + '%';
+  $('upload-progress-label').textContent = pct >= 100 ? 'Finishing…' : 'Uploading…';
+  $('upload-progress-track').setAttribute('aria-valuenow', String(pct));
+}
+
+function setProgressProcessing() {
+  $('upload-progress-bar').className = 'progress-fill processing';
+  $('upload-progress-pct').textContent = '';
+  $('upload-progress-label').textContent = 'Processing…';
+  $('upload-progress-track').removeAttribute('aria-valuenow'); // indeterminate
+}
+
+function setProgressDone() {
+  const bar = $('upload-progress-bar');
+  bar.className = 'progress-fill done';
+  bar.style.width = '100%';
+  $('upload-progress-pct').textContent = '100%';
+  $('upload-progress-label').textContent = 'Done';
+  $('upload-progress-track').setAttribute('aria-valuenow', '100');
+}
+
+function setProgressFailed() {
+  $('upload-progress-bar').className = 'progress-fill failed';
+  $('upload-progress-label').textContent = 'Failed';
 }
 
 async function loadVideos() {
@@ -376,6 +455,12 @@ async function loadVideos() {
     tr.appendChild(td(fmtDuration(v.durationSeconds)));
     tr.appendChild(td(fmtDate(v.createdAt)));
     const actions = document.createElement('td');
+    actions.className = 'row-actions';
+    const play = document.createElement('button');
+    play.className = 'btn ghost';
+    play.textContent = 'Play';
+    play.addEventListener('click', () => playVideo(v.id, v.title));
+    actions.appendChild(play);
     const del = document.createElement('button');
     del.className = 'btn danger';
     del.textContent = 'Delete';
@@ -397,6 +482,74 @@ async function deleteVideo(id, title) {
   } else {
     banner('Failed to delete video.', 'error');
   }
+}
+
+// ---- Video player ----------------------------------------------------------
+function wirePlayer() {
+  const dlg = $('player-dialog');
+  if (!dlg) return;
+  $('player-close').addEventListener('click', closePlayer);
+  // Click on the backdrop (outside the dialog box) closes it.
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) closePlayer(); });
+  // Esc (the dialog's native close) must also stop playback & free the network.
+  dlg.addEventListener('close', stopPlayer);
+  $('player-video').addEventListener('error', () => {
+    // Most commonly an unsupported container/codec for this browser (e.g. MKV).
+    if (!$('player-video').currentSrc) return; // no source set yet → ignore
+    playerStatus("This browser can't play this video format. Try downloading it instead.");
+  });
+}
+
+// Resolve a short-lived playback URL from the public detail endpoint (works for
+// both S3/R2 presigned URLs and local signed /api/media URLs) and play it.
+async function playVideo(id, title) {
+  const dlg = $('player-dialog');
+  const video = $('player-video');
+  $('player-title').textContent = title || 'Video';
+  playerStatus('Loading…');
+  if (typeof dlg.showModal === 'function') dlg.showModal();
+  else dlg.setAttribute('open', '');
+
+  const { res, data } = await apiJson('/api/videos/' + encodeURIComponent(id), 'GET');
+  if (res.status === 401) { closePlayer(); await refreshState(); return; }
+  if (!res.ok || !data || !data.playbackUrl) {
+    playerStatus('Could not load this video for playback.');
+    return;
+  }
+  playerStatus(null);
+  video.src = data.playbackUrl;
+  video.load();
+  // Autoplay may be blocked by the browser; the user can press play either way.
+  const p = video.play();
+  if (p && typeof p.catch === 'function') p.catch(() => { /* user can press play */ });
+}
+
+function playerStatus(message) {
+  const el = $('player-status');
+  const video = $('player-video');
+  if (message) {
+    el.textContent = message;
+    el.hidden = false;
+    show(video, false);
+  } else {
+    el.hidden = true;
+    show(video, true);
+  }
+}
+
+// Stop playback and release the network connection (presigned URLs are short-lived).
+function stopPlayer() {
+  const video = $('player-video');
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
+}
+
+function closePlayer() {
+  const dlg = $('player-dialog');
+  stopPlayer();
+  if (dlg.open) dlg.close();        // fires 'close' → stopPlayer again (idempotent)
+  else dlg.removeAttribute('open'); // fallback when showModal is unavailable
 }
 
 // ---- Settings --------------------------------------------------------------
