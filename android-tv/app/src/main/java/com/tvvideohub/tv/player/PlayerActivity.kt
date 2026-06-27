@@ -76,9 +76,17 @@ class PlayerActivity : ComponentActivity() {
     // True while we hold PRIORITY_PLAYBACK in the shared PriorityTaskManager (so the prefetch yields).
     private var holdingPlaybackPriority = false
 
-    private val videoId: String by lazy { intent.getStringExtra(EXTRA_VIDEO_ID).orEmpty() }
+    // The currently-playing video id. Mutable: catalog playback loops to the next video
+    // (wrapping past the last), so this advances as we move through the list.
+    private var currentVideoId: String = ""
     private val directUri: String? by lazy { intent.getStringExtra(EXTRA_DIRECT_URI) }
     private val directMime: String? by lazy { intent.getStringExtra(EXTRA_DIRECT_MIME) }
+
+    // Ordered catalog ids for loop playback (online only): >1 → loop the whole list and wrap;
+    // <=1 (or offline) → repeat the single video via REPEAT_MODE_ONE. Empty until loaded.
+    private var playlist: List<String> = emptyList()
+    private var playlistIndex: Int = 0
+    private val loopWholeList: Boolean get() = directUri.isNullOrBlank() && playlist.size > 1
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(LocaleHelper.wrap(newBase, SettingsStore.get(newBase).language.value))
@@ -86,6 +94,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        currentVideoId = intent.getStringExtra(EXTRA_VIDEO_ID).orEmpty()
 
         val root = FrameLayout(this)
         playerView = PlayerView(this).apply {
@@ -138,15 +147,15 @@ class PlayerActivity : ComponentActivity() {
         root.addView(cacheLabel)
         setContentView(root)
 
-        if (videoId.isBlank() && directUri.isNullOrBlank()) {
+        if (currentVideoId.isBlank() && directUri.isNullOrBlank()) {
             showMessage(getString(com.tvvideohub.tv.R.string.player_error))
             return
         }
 
         val uri = directUri
         if (!uri.isNullOrBlank()) {
-            // Offline / direct playback — no network round-trip.
-            preparePlayer(uri, directMime, cacheKey = videoId.ifBlank { uri })
+            // Offline / direct playback — no network round-trip. Repeats the one video.
+            preparePlayer(uri, directMime, cacheKey = currentVideoId.ifBlank { uri })
         } else {
             loadAndPlay()
         }
@@ -155,13 +164,22 @@ class PlayerActivity : ComponentActivity() {
     private fun loadAndPlay() {
         lifecycleScope.launch {
             try {
-                val detail = repository.getVideo(videoId)
+                val detail = repository.getVideo(currentVideoId)
+                // Build the loop playlist from the catalog order (best-effort). With >1 video
+                // we loop the whole list; with 0/1 we repeat the current one (REPEAT_MODE_ONE).
+                runCatching {
+                    val ids = repository.listVideos().map { it.id }
+                    if (ids.isNotEmpty()) {
+                        playlist = ids
+                        playlistIndex = ids.indexOf(currentVideoId).coerceAtLeast(0)
+                    }
+                }
                 preparePlayer(detail.playbackUrl, detail.mimeType, cacheKey = detail.id)
             } catch (t: Throwable) {
                 // If we're offline but the video was downloaded, fall back to the cache.
-                val offline = DownloadUtil.getDownload(this@PlayerActivity, videoId)
+                val offline = DownloadUtil.getDownload(this@PlayerActivity, currentVideoId)
                 if (offline != null) {
-                    preparePlayer(offline.request.uri.toString(), offline.request.mimeType, cacheKey = videoId)
+                    preparePlayer(offline.request.uri.toString(), offline.request.mimeType, cacheKey = currentVideoId)
                 } else {
                     showMessage(getString(com.tvvideohub.tv.R.string.player_error))
                 }
@@ -169,7 +187,29 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    private fun preparePlayer(uri: String, mime: String?, cacheKey: String) {
+    /**
+     * Catalog loop: advance to the next video (wrapping past the last) and play it from the
+     * start. Only used when [loopWholeList] is true (online, >1 video).
+     */
+    private fun advanceToNext() {
+        if (playlist.isEmpty()) return
+        playlistIndex = (playlistIndex + 1) % playlist.size
+        currentVideoId = playlist[playlistIndex]
+        lifecycleScope.launch {
+            try {
+                val detail = repository.getVideo(currentVideoId)
+                preparePlayer(detail.playbackUrl, detail.mimeType, cacheKey = detail.id, resumeAllowed = false)
+            } catch (t: Throwable) {
+                showMessage(getString(com.tvvideohub.tv.R.string.player_error))
+            }
+        }
+    }
+
+    private fun preparePlayer(uri: String, mime: String?, cacheKey: String, resumeAllowed: Boolean = true) {
+        // Release any previous player/prefetch first, so this is safe to call again when the
+        // catalog loop advances to the next video.
+        releasePlayer()
+
         // Route all reads through the shared cache so streaming fills the cache and a
         // completed download plays without touching the network.
         val mediaSourceFactory = DefaultMediaSourceFactory(this)
@@ -197,6 +237,9 @@ class PlayerActivity : ComponentActivity() {
             .build()
         player = exo
         playerView.player = exo
+        // A single video (or offline playback) repeats seamlessly; a multi-video catalog loops
+        // via manual advance on STATE_ENDED so each next presigned URL is fetched fresh.
+        exo.repeatMode = if (loopWholeList) Player.REPEAT_MODE_OFF else Player.REPEAT_MODE_ONE
 
         val mediaItem = MediaItem.Builder()
             .setUri(uri)
@@ -215,7 +258,10 @@ class PlayerActivity : ComponentActivity() {
                 }
                 // Finished watching → forget the resume point so it starts over next time.
                 if (playbackState == Player.STATE_ENDED) {
-                    PlaybackStore.clear(this@PlayerActivity, videoId)
+                    PlaybackStore.clear(this@PlayerActivity, currentVideoId)
+                    // Catalog loop: roll on to the next video (wraps past the last). A single
+                    // video repeats via REPEAT_MODE_ONE and never reaches STATE_ENDED.
+                    if (loopWholeList) advanceToNext()
                 }
                 // Yield the background prefetch to playback ONLY while we're actually starved
                 // (rebuffering). During normal READY playback the prefetch keeps caching ahead at
@@ -233,8 +279,9 @@ class PlayerActivity : ComponentActivity() {
             }
         })
 
-        // Resume where we left off last time (same episode, keyed by stable video id).
-        val resumeMs = PlaybackStore.positionFor(this, videoId)
+        // Resume where we left off last time (same episode, keyed by stable video id). When the
+        // loop advances to the next video we start it from the beginning (resumeAllowed=false).
+        val resumeMs = if (resumeAllowed) PlaybackStore.positionFor(this, currentVideoId) else 0L
         exo.setMediaItem(mediaItem, if (resumeMs > 0L) resumeMs else C.TIME_UNSET)
         exo.playWhenReady = true
         exo.prepare()
@@ -277,7 +324,7 @@ class PlayerActivity : ComponentActivity() {
                     // the network hiccuped: get a fresh URL and resume (retry-capped), else back off.
                     if (prefetchCancelled || !isActive) return@launch
                     if (attempt++ >= MAX_PREFETCH_RETRIES) return@launch
-                    val fresh = runCatching { repository.getVideo(videoId).playbackUrl }.getOrNull()
+                    val fresh = runCatching { repository.getVideo(currentVideoId).playbackUrl }.getOrNull()
                     if (!fresh.isNullOrBlank()) currentUri = fresh else delay(PREFETCH_RETRY_DELAY_MS)
                 }
             }
@@ -364,8 +411,8 @@ class PlayerActivity : ComponentActivity() {
     /** Persist the current position for [videoId] (cleared automatically once finished). */
     private fun saveProgress() {
         val p = player ?: return
-        if (videoId.isBlank()) return
-        PlaybackStore.save(this, videoId, p.currentPosition, p.duration)
+        if (currentVideoId.isBlank()) return
+        PlaybackStore.save(this, currentVideoId, p.currentPosition, p.duration)
     }
 
     private fun releasePlayer() {
