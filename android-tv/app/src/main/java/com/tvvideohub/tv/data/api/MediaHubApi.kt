@@ -1,5 +1,6 @@
 package com.tvvideohub.tv.data.api
 
+import com.tvvideohub.tv.data.dto.AccessStatus
 import com.tvvideohub.tv.data.dto.AppRelease
 import com.tvvideohub.tv.data.dto.HealthDto
 import com.tvvideohub.tv.data.dto.VideoDetail
@@ -14,6 +15,10 @@ interface MediaHubApi {
     /** Health probe; its body carries the service identity used to validate a base URL. */
     @GET("api/health")
     suspend fun health(): Response<HealthDto>
+
+    /** Whether the access-code gate is on and whether the sent X-Access-Code is valid. */
+    @GET("api/app/access")
+    suspend fun getAccessStatus(): AccessStatus
 
     @GET("api/videos")
     suspend fun getVideos(): VideoListResponse

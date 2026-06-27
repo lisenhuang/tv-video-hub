@@ -54,6 +54,12 @@
     <string name="reconfigure_subtitle">You\'re online, but %1$s didn\'t respond. Check the address and try again.</string>
     <string name="offline_title">You\'re offline</string>
     <string name="offline_subtitle">No internet connection. You can still watch videos you\'ve downloaded.</string>
+    <string name="access_code_title">Enter access code</string>
+    <string name="access_code_subtitle">Ask the administrator for the 6-letter code to use this app.</string>
+    <string name="access_code_label">Access code</string>
+    <string name="access_code_submit">Continue</string>
+    <string name="access_code_checking">Checking…</string>
+    <string name="access_code_invalid">That code isn\'t valid. Please check it and try again.</string>
     <string name="offline_action_view_downloads">View downloads</string>
 
     <!-- Backend URL screen -->

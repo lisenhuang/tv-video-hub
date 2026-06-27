@@ -2,6 +2,7 @@ package com.tvvideohub.tv.data
 
 import com.tvvideohub.tv.data.api.ApiClient
 import com.tvvideohub.tv.data.api.MediaHubApi
+import com.tvvideohub.tv.data.dto.AccessStatus
 import com.tvvideohub.tv.data.dto.AppRelease
 import com.tvvideohub.tv.data.dto.VideoDetail
 import com.tvvideohub.tv.data.dto.VideoSummary
@@ -32,6 +33,11 @@ class CatalogRepository {
             val resp = api.health()
             resp.isSuccessful && resp.body()?.isThisBackend == true
         }.getOrDefault(false)
+    }
+
+    /** Whether the backend requires an access code, and whether the stored one is valid. */
+    suspend fun getAccessStatus(): AccessStatus = withContext(Dispatchers.IO) {
+        api.getAccessStatus()
     }
 
     suspend fun listVideos(): List<VideoSummary> = withContext(Dispatchers.IO) {

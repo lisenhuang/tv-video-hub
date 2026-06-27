@@ -1,6 +1,7 @@
 package com.tvvideohub.tv.ui
 
 import com.tvvideohub.tv.ui.components.AppButton
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -125,6 +126,10 @@ private fun AvailablePanel(
     val updateFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { updateFocus.requestFocus() } }
 
+    // Mandatory update: swallow BACK so the prompt can't be dismissed (the "Later" button is
+    // hidden below too), forcing the user through the update.
+    if (release.forceUpdate) BackHandler(enabled = true) { /* consume — no dismiss */ }
+
     Text(
         text = stringResource(R.string.update_available_title),
         style = MaterialTheme.typography.headlineSmall,
@@ -156,8 +161,11 @@ private fun AvailablePanel(
         ) {
             Text(text = stringResource(R.string.update_action_update))
         }
-        AppButton(onClick = onDismiss) {
-            Text(text = stringResource(R.string.update_action_later))
+        // No "Later" for a mandatory update.
+        if (!release.forceUpdate) {
+            AppButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.update_action_later))
+            }
         }
     }
 }

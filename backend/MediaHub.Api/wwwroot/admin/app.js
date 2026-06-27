@@ -136,6 +136,7 @@ async function init() {
   wireVideoForm();
   wirePlayer();
   wireSettings();
+  wireAccessCodes();
 
   await refreshState();
 }
@@ -331,9 +332,75 @@ function selectTab(name) {
   document.querySelectorAll('.tab').forEach((t) => {
     t.setAttribute('aria-selected', String(t.dataset.tab === name));
   });
-  ['videos', 'settings'].forEach((n) => {
+  ['videos', 'codes', 'settings'].forEach((n) => {
     show($('panel-' + n), n === name);
   });
+  if (name === 'codes') loadAccessCodes();
+}
+
+// ---- Access codes ----------------------------------------------------------
+function wireAccessCodes() {
+  $('gen-code-btn').addEventListener('click', generateAccessCode);
+  $('gate-enabled').addEventListener('change', (e) => setAccessGate(e.target.checked));
+}
+
+async function loadAccessCodes() {
+  const { res, data } = await apiJson('/api/admin/access-codes', 'GET');
+  if (res.status === 401) { await refreshState(); return; }
+  if (!res.ok) { banner((data && data.error) || 'Failed to load access codes.', 'error'); return; }
+  renderAccessCodes(data);
+}
+
+function renderAccessCodes(data) {
+  $('gate-enabled').checked = !!(data && data.gateEnabled);
+  const codes = (data && data.codes) || [];
+  const tbody = $('codes-table').querySelector('tbody');
+  tbody.innerHTML = '';
+  show($('codes-empty'), codes.length === 0);
+  for (const code of codes) {
+    const tr = document.createElement('tr');
+    const codeCell = td(code);
+    codeCell.className = 'code-cell';
+    tr.appendChild(codeCell);
+    const actions = document.createElement('td');
+    actions.className = 'row-actions';
+    const del = document.createElement('button');
+    del.className = 'btn danger';
+    del.textContent = 'Delete';
+    del.addEventListener('click', () => deleteAccessCode(code));
+    actions.appendChild(del);
+    tr.appendChild(actions);
+    tbody.appendChild(tr);
+  }
+}
+
+async function generateAccessCode() {
+  const { res, data } = await apiJson('/api/admin/access-codes', 'POST', {});
+  if (res.status === 401) { await refreshState(); return; }
+  if (!res.ok) { banner((data && data.error) || 'Failed to generate a code.', 'error'); return; }
+  renderAccessCodes(data);
+  banner('New access code generated.', 'success');
+}
+
+async function deleteAccessCode(code) {
+  if (!confirm(`Delete code "${code}"? Any device using it will lose access.`)) return;
+  const { res, data } = await apiJson('/api/admin/access-codes/' + encodeURIComponent(code), 'DELETE');
+  if (res.status === 401) { await refreshState(); return; }
+  if (!res.ok) { banner('Failed to delete code.', 'error'); return; }
+  renderAccessCodes(data);
+  banner('Code deleted.', 'success');
+}
+
+async function setAccessGate(enabled) {
+  const { res, data } = await apiJson('/api/admin/access-codes/gate', 'PUT', { enabled });
+  if (res.status === 401) { await refreshState(); return; }
+  if (!res.ok) {
+    $('gate-enabled').checked = !enabled; // revert the toggle on failure
+    banner('Failed to update the access gate.', 'error');
+    return;
+  }
+  renderAccessCodes(data);
+  banner(enabled ? 'Access code is now required.' : 'Access code requirement turned off.', 'success');
 }
 
 // ---- Videos ----------------------------------------------------------------

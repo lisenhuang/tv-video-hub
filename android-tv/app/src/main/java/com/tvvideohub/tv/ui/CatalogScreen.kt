@@ -25,7 +25,10 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -54,7 +57,7 @@ import com.tvvideohub.tv.download.DownloadUtil
  * Downloads / Settings actions. Cards show an "Offline" badge when downloaded. Works with
  * both D-pad/remote (focusable cards, initial focus) and touch (Card.onClick fires on tap).
  */
-@OptIn(UnstableApi::class)
+@OptIn(UnstableApi::class, ExperimentalComposeUiApi::class)
 @Composable
 fun CatalogRoute(
     onVideoSelected: (String) -> Unit,
@@ -79,8 +82,17 @@ fun CatalogRoute(
             .toSet()
     }
 
+    // While the update modal is up, block the D-pad from reaching anything behind it: the
+    // background becomes a focus group that refuses entry, so focus stays on the modal's buttons.
+    val updateModalShown = updateState !is UpdateUiState.Idle && updateState !is UpdateUiState.InstallLaunched
+
     Box(modifier = Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 24.dp)) {
-        Column(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .focusGroup()
+                .focusProperties { if (updateModalShown) enter = { FocusRequester.Cancel } }
+        ) {
             CatalogHeader(onOpenDownloads = onOpenDownloads, onOpenSettings = onOpenSettings)
 
             Box(Modifier.fillMaxSize()) {

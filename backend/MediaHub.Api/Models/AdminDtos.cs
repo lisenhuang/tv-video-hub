@@ -22,6 +22,17 @@ public sealed record AdminIdentityDto(string Username);
 
 public sealed record AdminVideoListDto(IReadOnlyList<VideoSummaryDto> Videos);
 
+// ---- Access-code gate ----------------------------------------------------
+
+/// <summary>Gate state for the dashboard: whether a code is required + the current codes.</summary>
+public sealed record AdminAccessCodesDto(bool GateEnabled, IReadOnlyList<string> Codes);
+
+/// <summary>Generate this many new codes (defaults to 1; the backend caps the count).</summary>
+public sealed record GenerateAccessCodesRequest(int? Count);
+
+/// <summary>Turn the access-code requirement on/off.</summary>
+public sealed record AccessGateRequest(bool Enabled);
+
 /// <summary>
 /// Snapshot of an in-flight server→storage upload, polled by the dashboard during the
 /// "Uploading to storage…" phase. <c>found</c> is false until the backend starts the

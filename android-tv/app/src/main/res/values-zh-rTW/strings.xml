@@ -54,6 +54,12 @@
     <string name="reconfigure_subtitle">網路正常，但 %1$s 沒有回應。請檢查位址後再試一次。</string>
     <string name="offline_title">您目前處於離線狀態</string>
     <string name="offline_subtitle">沒有網路連線。您仍可觀看已下載的影片。</string>
+    <string name="access_code_title">輸入存取碼</string>
+    <string name="access_code_subtitle">請向管理員索取 6 位字母存取碼以使用本應用程式。</string>
+    <string name="access_code_label">存取碼</string>
+    <string name="access_code_submit">繼續</string>
+    <string name="access_code_checking">正在驗證…</string>
+    <string name="access_code_invalid">存取碼無效，請檢查後再試一次。</string>
     <string name="offline_action_view_downloads">查看下載</string>
 
     <!-- Backend URL screen -->

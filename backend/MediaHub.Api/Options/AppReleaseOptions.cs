@@ -55,4 +55,11 @@ public sealed class AppReleaseOptions
 
     /// <summary>Optional ISO-8601 publish timestamp; informational only.</summary>
     public string PublishedAt { get; set; } = string.Empty;
+
+    /// <summary>
+    /// When true the update is MANDATORY: a gate-aware app must not let the user dismiss/cancel
+    /// the update prompt (no "Later"). Older apps that don't know this field simply ignore it and
+    /// behave as before, so it's safe/additive.
+    /// </summary>
+    public bool ForceUpdate { get; set; }
 }

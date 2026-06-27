@@ -1,5 +1,7 @@
+using MediaHub.Api.Auth;
 using MediaHub.Api.Models;
 using MediaHub.Api.Options;
+using MediaHub.Api.Settings;
 using Microsoft.Extensions.Options;
 
 namespace MediaHub.Api.Endpoints;
@@ -42,7 +44,20 @@ public static class AppEndpoints
                 SizeBytes: o.SizeBytes,
                 Sha256: o.Sha256 ?? string.Empty,
                 MinSdk: o.MinSdk > 0 ? o.MinSdk : 23,
-                PublishedAt: publishedAt));
+                PublishedAt: publishedAt,
+                ForceUpdate: o.ForceUpdate));
+        });
+
+        // GET /api/app/access — does the app need an access code, and is the one it sent valid?
+        // Ungated (the app calls this BEFORE it has access) and additive, so older apps that never
+        // call it are unaffected. The app sends its stored code in the X-Access-Code header.
+        group.MapGet("/access", async (HttpContext http, AppConfigProvider appConfig) =>
+        {
+            var ct = http.RequestAborted;
+            var required = await appConfig.GetAccessGateEnabledAsync(ct);
+            var provided = http.Request.Headers[AccessCodeFilter.HeaderName].ToString();
+            var valid = !required || await appConfig.IsAccessCodeValidAsync(provided, ct);
+            return Results.Ok(new AccessStatusDto(required, valid));
         });
 
         return app;

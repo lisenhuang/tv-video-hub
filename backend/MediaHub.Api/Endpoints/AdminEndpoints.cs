@@ -212,6 +212,45 @@ public static class AdminEndpoints
             return deleted ? Results.NoContent() : Results.NotFound();
         });
 
+        // ---- Access-code gate management (auth) ------------------------------
+        // Generate / list / revoke the 6-letter codes the app must enter, and flip the gate
+        // on/off. Codes + flag live in app_config via AppConfigProvider (no schema change).
+
+        var codes = group.MapGroup("/access-codes").RequireAuthorization();
+
+        // GET — current gate state + all codes.
+        codes.MapGet("/", async (AppConfigProvider appConfig, CancellationToken ct) =>
+        {
+            var enabled = await appConfig.GetAccessGateEnabledAsync(ct);
+            var list = (await appConfig.GetAccessCodesAsync(ct)).OrderBy(c => c, StringComparer.Ordinal).ToList();
+            return Results.Ok(new AdminAccessCodesDto(enabled, list));
+        });
+
+        // POST — generate N (default 1, capped) new uppercase codes; returns the full set.
+        codes.MapPost("/", async (GenerateAccessCodesRequest? body, AppConfigProvider appConfig, CancellationToken ct) =>
+        {
+            var count = Math.Clamp(body?.Count ?? 1, 1, 50);
+            var generated = new List<string>(count);
+            for (var i = 0; i < count; i++) generated.Add(GenerateAccessCode());
+            var all = await appConfig.AddAccessCodesAsync(generated, ct);
+            return Results.Ok(new AdminAccessCodesDto(await appConfig.GetAccessGateEnabledAsync(ct), all));
+        });
+
+        // DELETE — revoke a single code.
+        codes.MapDelete("/{code}", async (string code, AppConfigProvider appConfig, CancellationToken ct) =>
+        {
+            var all = await appConfig.RemoveAccessCodeAsync(code, ct);
+            return Results.Ok(new AdminAccessCodesDto(await appConfig.GetAccessGateEnabledAsync(ct), all));
+        });
+
+        // PUT /gate — turn the requirement on/off.
+        codes.MapPut("/gate", async (AccessGateRequest body, AppConfigProvider appConfig, CancellationToken ct) =>
+        {
+            await appConfig.SetAccessGateEnabledAsync(body.Enabled, ct);
+            var list = (await appConfig.GetAccessCodesAsync(ct)).OrderBy(c => c, StringComparer.Ordinal).ToList();
+            return Results.Ok(new AdminAccessCodesDto(body.Enabled, list));
+        });
+
         // GET /api/admin/uploads/{id}/progress — poll the server→storage (R2/local)
         // transfer for an in-flight upload the dashboard tagged with this id. Lets the
         // progress bar show a real percentage during the otherwise-opaque "Processing"
@@ -342,6 +381,16 @@ public static class AdminEndpoints
         if (value is null) return;                       // absent → leave unchanged
         if (!allowBlank && string.IsNullOrWhiteSpace(value)) return;
         dict[key] = value.Trim();
+    }
+
+    /// <summary>A random 6-letter UPPERCASE access code (A–Z), unbiased.</summary>
+    private static string GenerateAccessCode()
+    {
+        const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        var chars = new char[6];
+        for (var i = 0; i < chars.Length; i++)
+            chars[i] = alphabet[System.Security.Cryptography.RandomNumberGenerator.GetInt32(alphabet.Length)];
+        return new string(chars);
     }
 
     private static bool StorageOrKeyTouched(SettingsUpdateRequest b) =>

@@ -64,6 +64,8 @@ class MainActivity : ComponentActivity() {
                         onRetry = vm::refresh,
                     )
 
+                    is RootState.NeedsAccessCode -> AccessCodeScreen(onSubmit = vm::submitAccessCode)
+
                     is RootState.Ready -> CatalogRoute(
                         onVideoSelected = { id -> startActivity(DetailActivity.intent(this, id)) },
                         onOpenDownloads = { open(DownloadsActivity::class.java) },

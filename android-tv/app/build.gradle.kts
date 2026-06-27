@@ -19,11 +19,15 @@ android {
         applicationId = "com.tvvideohub.tv"
         minSdk = 23
         targetSdk = 34
-        // 9 / 1.0.8 — smoother playback + list previews: the background prefetch now keeps caching
+        // 10 / 1.0.9 — access-code gate + update polish: optional admin-set access code required to
+        // browse content (sent as X-Access-Code; entry screen on launch); the update modal now traps
+        // D-pad focus to its own buttons; and a forceUpdate flag from /api/app/latest hides "Later"
+        // and blocks BACK for mandatory updates.
+        // (9 / 1.0.8 — smoother playback + list previews: the background prefetch now keeps caching
         // ahead during normal playback (it only yields to the player while actually rebuffering), so
         // a slow/bursty network is far less likely to stall the picture; and the catalog list now
         // generates frame previews on the spot (bounded) for videos with no server thumbnail.
-        // (8 / 1.0.7 — version-only bump (no code changes) to test the in-app self-update flow:
+        // 8 / 1.0.7 — version-only bump (no code changes) to test the in-app self-update flow:
         // an installed v7 should see this as an available update and exercise the progress bar +
         // auto-restart.
         // 7 / 1.0.6 — self-update UX: the in-app updater now shows a download progress bar +
@@ -42,8 +46,8 @@ android {
         // press any button/card; AppButton/tapClickable add a touch-tap path, D-pad still works.
         // 2 / 1.0.1 fixed the first-launch crash: CatalogRepository no longer reads
         // ApiClient.service eagerly.) Same signing key, higher versionCode → installable update.
-        versionCode = 9
-        versionName = "1.0.8"
+        versionCode = 10
+        versionName = "1.0.9"
 
         // Exposed to Kotlin via BuildConfig.BACKEND_BASE_URL.
         buildConfigField("String", "BACKEND_BASE_URL", "\"$backendBaseUrl\"")

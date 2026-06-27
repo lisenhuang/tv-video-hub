@@ -24,6 +24,8 @@ sealed interface RootState {
     data object NeedsSetup : RootState
     data class Reconfigure(val attemptedUrl: String) : RootState
     data object OfflineNoBackend : RootState
+    /** Backend is up but requires an access code the app doesn't have (or has an invalid one). */
+    data object NeedsAccessCode : RootState
     data object Ready : RootState
 }
 
@@ -49,14 +51,37 @@ class RootViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
             ApiClient.configure(url)
+            ApiClient.setAccessCode(settings.accessCode.value)
 
             val reachable = repository.isBackendReachable()
             _state.value = when {
-                reachable -> RootState.Ready
+                reachable -> if (accessGateBlocks()) RootState.NeedsAccessCode else RootState.Ready
                 getApplication<Application>().hasInternet() -> RootState.Reconfigure(url)
                 else -> RootState.OfflineNoBackend
             }
         }
+    }
+
+    /**
+     * True when the backend requires an access code and the stored one is missing/invalid. On any
+     * error (e.g. a transient blip) returns false so we don't lock the user out — the content
+     * endpoints are still gated server-side, so this can only ever be over-permissive client-side.
+     */
+    private suspend fun accessGateBlocks(): Boolean {
+        val status = runCatching { repository.getAccessStatus() }.getOrNull() ?: return false
+        return status.required && !status.valid
+    }
+
+    /**
+     * Save + apply a typed access code and re-check. Returns true if it unlocked content (state
+     * moves to [RootState.Ready]); false leaves the gate up so the screen can show an error.
+     */
+    suspend fun submitAccessCode(code: String): Boolean {
+        settings.setAccessCode(code)
+        ApiClient.setAccessCode(settings.accessCode.value)
+        val ok = !accessGateBlocks()
+        if (ok) _state.value = RootState.Ready
+        return ok
     }
 
     /** Health-check a candidate URL without persisting it (for the "Test" button). */

@@ -46,4 +46,12 @@ public sealed record AppReleaseDto(
     long SizeBytes,
     string Sha256,
     int MinSdk,
-    DateTimeOffset PublishedAt);
+    DateTimeOffset PublishedAt,
+    bool ForceUpdate);
+
+/// <summary>
+/// Whether the app must present an access code, and whether the one it sent (header
+/// <c>X-Access-Code</c>) is currently valid. <c>required=false</c> means the gate is off and the
+/// app should proceed straight to content.
+/// </summary>
+public sealed record AccessStatusDto(bool Required, bool Valid);

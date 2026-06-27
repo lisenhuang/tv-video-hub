@@ -29,6 +29,15 @@ object ApiClient {
     @Volatile private var currentBaseUrl: String? = null
     @Volatile private var api: MediaHubApi? = null
 
+    // Access code attached to every request as X-Access-Code (read live by the interceptor, so
+    // changing it takes effect immediately without rebuilding the client). Null/blank = omit.
+    @Volatile private var accessCode: String? = null
+
+    /** Set/clear the access code sent on all requests. Cheap; no client rebuild needed. */
+    fun setAccessCode(code: String?) {
+        accessCode = code?.takeIf { it.isNotBlank() }
+    }
+
     /** True once a non-blank base URL has been configured. */
     val isConfigured: Boolean get() = !currentBaseUrl.isNullOrBlank()
 
@@ -58,6 +67,14 @@ object ApiClient {
         val client = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
+            // Attach the access code (if any) to every request; the backend ignores it when the
+            // gate is off, so this is harmless when unused.
+            .addInterceptor { chain ->
+                val code = accessCode
+                val request = if (code.isNullOrBlank()) chain.request()
+                else chain.request().newBuilder().header("X-Access-Code", code).build()
+                chain.proceed(request)
+            }
             .addInterceptor(logging)
             .build()
 

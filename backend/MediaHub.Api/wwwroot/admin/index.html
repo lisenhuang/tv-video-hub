@@ -134,6 +134,7 @@
     <section id="dash-view" hidden>
       <nav class="tabs" role="tablist" aria-label="Sections">
         <button class="tab" role="tab" data-tab="videos" aria-selected="true">Videos</button>
+        <button class="tab" role="tab" data-tab="codes" aria-selected="false">Access codes</button>
         <button class="tab" role="tab" data-tab="settings" aria-selected="false">Settings</button>
       </nav>
 
@@ -329,6 +330,32 @@
             </div>
           </form>
           <div id="test-result" class="test-result" hidden></div>
+        </div>
+      </div>
+
+      <!-- Access codes -->
+      <div class="tab-panel" id="panel-codes" role="tabpanel" hidden>
+        <div class="card">
+          <h2>Access code gate</h2>
+          <p class="info-note">When ON, the app requires one of the codes below before it can
+            browse or play. Codes are 6 letters and are not case-sensitive. <strong>Roll out the
+            latest app first</strong> (devices self-update), then turn this on — older app versions
+            can't enter a code and will lose access until they update.</p>
+          <label class="check-row">
+            <input id="gate-enabled" type="checkbox" />
+            <span>Require an access code to use the app</span>
+          </label>
+        </div>
+        <div class="card">
+          <h2>Codes</h2>
+          <div class="actions">
+            <button id="gen-code-btn" class="btn primary" type="button">Generate a code</button>
+          </div>
+          <table id="codes-table">
+            <thead><tr><th>Code</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <p id="codes-empty" class="muted" hidden>No codes yet — generate one above.</p>
         </div>
       </div>
     </section>

@@ -12,15 +12,17 @@ public static class VideoEndpoints
         var group = app.MapGroup("/api/videos").WithTags("videos");
 
         // GET /api/videos — list catalog, newest first.
+        // Gated by AccessCodeFilter: public while the access-code gate is OFF (default), requires
+        // a valid X-Access-Code once an admin turns the gate ON.
         group.MapGet("/", async (VideoRepository repo, CancellationToken ct) =>
         {
             var videos = await repo.ListAsync(ct);
             var dto = new VideoListDto(videos.Select(v => new VideoSummaryDto(
                 v.Id, v.Title, v.Description, v.ThumbnailUrl, v.DurationSeconds, v.CreatedAt, v.SizeBytes)).ToList());
             return Results.Ok(dto);
-        });
+        }).AddEndpointFilter<AccessCodeFilter>();
 
-        // GET /api/videos/{id} — details + presigned playback URL.
+        // GET /api/videos/{id} — details + presigned playback URL. Same gate as the list.
         group.MapGet("/{id}", async (
             HttpRequest req, string id, VideoRepository repo, StorageRouter r2, CancellationToken ct) =>
         {
@@ -36,7 +38,7 @@ public static class VideoEndpoints
             return Results.Ok(new VideoDetailDto(
                 v.Id, v.Title, v.Description, v.ThumbnailUrl, v.DurationSeconds,
                 url, expires, v.MimeType, v.CreatedAt, v.SizeBytes));
-        });
+        }).AddEndpointFilter<AccessCodeFilter>();
 
         // POST /api/videos — register a video (JSON referencing an R2 object, or
         // multipart upload of the bytes). Requires X-Api-Key.

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using MediaHub.Api.Data;
 
 namespace MediaHub.Api.Settings;
@@ -32,9 +33,15 @@ public sealed class AppConfigProvider(IServiceScopeFactory scopeFactory)
     public const string KeyStorageLocalBasePath = "storage.localBasePath";
     public const string KeyStorageLocalSigningKey = "storage.localSigningKey";
     public const string KeyApiKey = "api.key";
+    // Access-code gate: whether the app must present a valid code, and the JSON array of
+    // valid codes (stored UPPERCASE; validated case-insensitively).
+    public const string KeyAccessGateEnabled = "access.gateEnabled";
+    public const string KeyAccessCodes = "access.codes";
 
     /// <summary>Default filesystem base directory for the local provider.</summary>
     public const string DefaultLocalBasePath = "App_Data/media";
+
+    private static readonly IReadOnlySet<string> EmptyCodes = new HashSet<string>(StringComparer.Ordinal);
 
     private readonly SemaphoreSlim _reloadGate = new(1, 1);
     private readonly SemaphoreSlim _signingKeyGate = new(1, 1);
@@ -43,6 +50,8 @@ public sealed class AppConfigProvider(IServiceScopeFactory scopeFactory)
     private volatile bool _loaded;
     private EffectiveStorageConfig _storage = EmptyStorage();
     private string _apiKey = string.Empty;
+    private bool _accessGateEnabled;
+    private IReadOnlySet<string> _accessCodes = EmptyCodes;
 
     /// <summary>The effective object-storage config (empty if the DB isn't ready yet).</summary>
     public async Task<EffectiveStorageConfig> GetStorageAsync(CancellationToken ct = default)
@@ -56,6 +65,87 @@ public sealed class AppConfigProvider(IServiceScopeFactory scopeFactory)
     {
         await EnsureLoadedAsync(ct);
         lock (_swap) return _apiKey;
+    }
+
+    // ---- Access-code gate ---------------------------------------------------
+
+    /// <summary>Whether the app must present a valid access code to read content.</summary>
+    public async Task<bool> GetAccessGateEnabledAsync(CancellationToken ct = default)
+    {
+        await EnsureLoadedAsync(ct);
+        lock (_swap) return _accessGateEnabled;
+    }
+
+    /// <summary>The set of valid access codes (UPPERCASE). Empty if none configured.</summary>
+    public async Task<IReadOnlySet<string>> GetAccessCodesAsync(CancellationToken ct = default)
+    {
+        await EnsureLoadedAsync(ct);
+        lock (_swap) return _accessCodes;
+    }
+
+    /// <summary>True if [code] (any case) matches a configured access code.</summary>
+    public async Task<bool> IsAccessCodeValidAsync(string? code, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return false;
+        var set = await GetAccessCodesAsync(ct);
+        return set.Contains(NormalizeCode(code));
+    }
+
+    /// <summary>Enable/disable the access-code gate (persisted + cache refreshed).</summary>
+    public Task SetAccessGateEnabledAsync(bool enabled, CancellationToken ct = default) =>
+        SaveAsync(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [KeyAccessGateEnabled] = enabled ? "true" : "false",
+        }, ct);
+
+    /// <summary>Add the given codes (normalized uppercase). Returns the full sorted set.</summary>
+    public async Task<IReadOnlyList<string>> AddAccessCodesAsync(
+        IEnumerable<string> codes, CancellationToken ct = default)
+    {
+        var set = new HashSet<string>(await GetAccessCodesAsync(ct), StringComparer.Ordinal);
+        foreach (var c in codes)
+            if (!string.IsNullOrWhiteSpace(c)) set.Add(NormalizeCode(c));
+        return await PersistCodesAsync(set, ct);
+    }
+
+    /// <summary>Remove a single code. Returns the remaining sorted set.</summary>
+    public async Task<IReadOnlyList<string>> RemoveAccessCodeAsync(string code, CancellationToken ct = default)
+    {
+        var set = new HashSet<string>(await GetAccessCodesAsync(ct), StringComparer.Ordinal);
+        set.Remove(NormalizeCode(code));
+        return await PersistCodesAsync(set, ct);
+    }
+
+    /// <summary>Trim + uppercase so storage and comparison are case-insensitive.</summary>
+    public static string NormalizeCode(string code) => code.Trim().ToUpperInvariant();
+
+    private async Task<IReadOnlyList<string>> PersistCodesAsync(
+        IEnumerable<string> codes, CancellationToken ct)
+    {
+        var sorted = codes.OrderBy(c => c, StringComparer.Ordinal).ToList();
+        await SaveAsync(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [KeyAccessCodes] = JsonSerializer.Serialize(sorted),
+        }, ct);
+        return sorted;
+    }
+
+    private static IReadOnlySet<string> ParseCodes(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return EmptyCodes;
+        try
+        {
+            var arr = JsonSerializer.Deserialize<List<string>>(json);
+            if (arr is null || arr.Count == 0) return EmptyCodes;
+            var set = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var c in arr)
+                if (!string.IsNullOrWhiteSpace(c)) set.Add(NormalizeCode(c));
+            return set;
+        }
+        catch
+        {
+            return EmptyCodes;
+        }
     }
 
     /// <summary>The currently-cached storage config without forcing a load (may be empty).</summary>
@@ -123,6 +213,8 @@ public sealed class AppConfigProvider(IServiceScopeFactory scopeFactory)
 
             EffectiveStorageConfig storage = EmptyStorage();
             string apiKey = string.Empty;
+            var gateEnabled = false;
+            IReadOnlySet<string> codes = EmptyCodes;
             var ready = false;
 
             try
@@ -134,6 +226,8 @@ public sealed class AppConfigProvider(IServiceScopeFactory scopeFactory)
                     var kv = await db.AppConfig.GetAllAsync(ct);
                     storage = BuildStorage(kv);
                     apiKey = Get(kv, KeyApiKey, string.Empty);
+                    gateEnabled = GetBool(kv, KeyAccessGateEnabled, false);
+                    codes = ParseCodes(Get(kv, KeyAccessCodes, string.Empty));
                     ready = true;
                 }
             }
@@ -147,6 +241,8 @@ public sealed class AppConfigProvider(IServiceScopeFactory scopeFactory)
             {
                 _storage = storage;
                 _apiKey = apiKey;
+                _accessGateEnabled = gateEnabled;
+                _accessCodes = codes;
             }
             // Only mark loaded once we actually read from a reachable DB; otherwise
             // keep retrying so config appears as soon as the DB comes up.

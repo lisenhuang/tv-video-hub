@@ -52,5 +52,17 @@ data class AppRelease(
     val sizeBytes: Long,
     val sha256: String,
     val minSdk: Int,
-    val publishedAt: String
+    val publishedAt: String,
+    /** When true the update is mandatory: the app must not let the user dismiss/cancel it. */
+    val forceUpdate: Boolean = false
+)
+
+/**
+ * `GET /api/app/access` — whether the app must present an access code, and whether the code it
+ * sent (the `X-Access-Code` header) is currently valid. `required=false` ⇒ gate off, proceed.
+ */
+@Serializable
+data class AccessStatus(
+    val required: Boolean = false,
+    val valid: Boolean = false
 )

@@ -128,6 +128,71 @@ fun BaseUrlScreen(
     }
 }
 
+/**
+ * Access-code gate: shown when the backend requires a code the app doesn't have. [onSubmit] saves
+ * + verifies the code and returns whether it unlocked content; false shows an "invalid" hint.
+ */
+@Composable
+fun AccessCodeScreen(onSubmit: suspend (String) -> Boolean) {
+    var code by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf(false) }
+    var checking by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val colors = MaterialTheme.colorScheme
+
+    Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+        Column(
+            modifier = Modifier.widthIn(max = 480.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(stringResource(R.string.access_code_title), style = MaterialTheme.typography.headlineMedium, color = colors.onBackground)
+            Text(
+                stringResource(R.string.access_code_subtitle),
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.onSurface,
+                modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
+            )
+
+            OutlinedInput(
+                value = code,
+                // 6 English letters only; store uppercase (backend matches case-insensitively).
+                onValueChange = { input ->
+                    code = input.filter { it in 'a'..'z' || it in 'A'..'Z' }.take(6).uppercase()
+                    error = false
+                },
+                label = stringResource(R.string.access_code_label),
+                keyboardType = KeyboardType.Text,
+                imeAction = ImeAction.Done,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            if (error) {
+                Text(
+                    text = stringResource(R.string.access_code_invalid),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onSurface,
+                    modifier = Modifier.padding(top = 12.dp)
+                )
+            }
+
+            AppButton(
+                onClick = {
+                    if (code.length < 6 || checking) return@AppButton
+                    checking = true
+                    scope.launch {
+                        val ok = runCatching { onSubmit(code) }.getOrDefault(false)
+                        checking = false
+                        error = !ok
+                    }
+                },
+                modifier = Modifier.padding(top = 24.dp)
+            ) {
+                Text(stringResource(if (checking) R.string.access_code_checking else R.string.access_code_submit))
+            }
+        }
+    }
+}
+
 /** Shown when there's no internet at all: the catalog is unavailable but downloads play. */
 @Composable
 fun OfflineScreen(onOpenDownloads: () -> Unit, onRetry: () -> Unit) {

@@ -511,6 +511,11 @@ code {
 }
 .help a { color: var(--primary); }
 
+/* ---- Access codes ------------------------------------------------------- */
+.check-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.check-row input { width: auto; }
+.code-cell { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 700; letter-spacing: 2px; }
+
 /* ---- Responsive --------------------------------------------------------- */
 @media (max-width: 560px) {
   .form .row { flex-direction: column; }

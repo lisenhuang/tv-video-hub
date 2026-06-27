@@ -34,6 +34,11 @@ class SettingsStore private constructor(private val prefs: SharedPreferences) {
     private val _language = MutableStateFlow(readLanguage())
     val language: StateFlow<AppLanguage> = _language
 
+    // The access code the user entered (stored UPPERCASE). Sent to the backend as X-Access-Code;
+    // null until the user passes the gate. Cleared if the backend later rejects it (revoked).
+    private val _accessCode = MutableStateFlow(prefs.getString(KEY_ACCESS_CODE, null))
+    val accessCode: StateFlow<String?> = _accessCode
+
     val isConfigured: Boolean get() = !_baseUrl.value.isNullOrBlank()
 
     fun setBaseUrl(url: String) {
@@ -60,11 +65,21 @@ class SettingsStore private constructor(private val prefs: SharedPreferences) {
         runCatching { AppLanguage.valueOf(prefs.getString(KEY_LANGUAGE, AppLanguage.SYSTEM.name)!!) }
             .getOrDefault(AppLanguage.SYSTEM)
 
+    /** Persist the access code (normalized uppercase), or clear it when [code] is null/blank. */
+    fun setAccessCode(code: String?) {
+        val normalized = code?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
+        prefs.edit().apply {
+            if (normalized == null) remove(KEY_ACCESS_CODE) else putString(KEY_ACCESS_CODE, normalized)
+        }.apply()
+        _accessCode.value = normalized
+    }
+
     companion object {
         private const val PREFS_NAME = "tv_video_hub_settings"
         private const val KEY_BASE_URL = "backend_base_url"
         private const val KEY_THEME = "theme_mode"
         private const val KEY_LANGUAGE = "app_language"
+        private const val KEY_ACCESS_CODE = "access_code"
 
         @Volatile private var instance: SettingsStore? = null
 
