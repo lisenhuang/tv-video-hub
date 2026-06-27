@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -23,6 +24,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -72,6 +74,18 @@ fun UpdateOverlay(
     onDismiss: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
+    // Keep the screen awake while the APK is downloading so the Android TV screensaver/daydream
+    // doesn't kick in mid-download and interrupt it (mirrors how the player holds the screen on
+    // during playback). Scoped to the download only: once it ends, the flag is released so the
+    // screensaver can still appear when the device is genuinely idle. Declared before the early
+    // return below so the effect's lifecycle is stable across every update state.
+    val view = LocalView.current
+    val downloading = updateState is UpdateUiState.Downloading
+    DisposableEffect(downloading) {
+        view.keepScreenOn = downloading
+        onDispose { view.keepScreenOn = false }
+    }
+
     if (updateState is UpdateUiState.Idle || updateState is UpdateUiState.InstallLaunched) {
         return
     }

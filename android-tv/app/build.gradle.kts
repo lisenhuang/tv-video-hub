@@ -19,6 +19,10 @@ android {
         applicationId = "com.tvvideohub.tv"
         minSdk = 23
         targetSdk = 34
+        // 12 / 1.0.11 — keep the screen awake during a self-update download: while the new APK is
+        // downloading, the catalog now holds keepScreenOn (same approach the player uses during
+        // playback) so the Android TV screensaver/daydream can't kick in mid-download and interrupt
+        // it; released as soon as the download ends so the screensaver still appears when idle.
         // 11 / 1.0.10 — full-episode caching, visible + reliable: the player now buffers up to ~5 min
         // ahead (byte-capped at 128 MB so it can't OOM) so the seek bar fills far ahead and keeps
         // filling while paused; a "Caching NN%" indicator shows the background prefetch pulling the
@@ -51,8 +55,8 @@ android {
         // press any button/card; AppButton/tapClickable add a touch-tap path, D-pad still works.
         // 2 / 1.0.1 fixed the first-launch crash: CatalogRepository no longer reads
         // ApiClient.service eagerly.) Same signing key, higher versionCode → installable update.
-        versionCode = 11
-        versionName = "1.0.10"
+        versionCode = 12
+        versionName = "1.0.11"
 
         // Exposed to Kotlin via BuildConfig.BACKEND_BASE_URL.
         buildConfigField("String", "BACKEND_BASE_URL", "\"$backendBaseUrl\"")
