@@ -12,9 +12,15 @@ import kotlinx.coroutines.withContext
  * Thin data layer over [MediaHubApi]. Keeps networking off the main thread and exposes
  * suspend functions returning plain DTOs (errors propagate as exceptions to callers).
  */
-class CatalogRepository(
-    private val api: MediaHubApi = ApiClient.service
-) {
+class CatalogRepository {
+
+    // Resolve the API lazily, PER CALL — never at construction. On a fresh install no
+    // backend URL is configured yet, so reading ApiClient.service eagerly (as a constructor
+    // default) threw IllegalStateException and crashed the app on first launch: RootViewModel
+    // builds a CatalogRepository in its field initializer, before the user has set a URL.
+    // A computed getter also always returns the CURRENT client, so the repository keeps
+    // working after the user changes the backend URL (ApiClient rebuilds the service).
+    private val api: MediaHubApi get() = ApiClient.service
 
     /**
      * True only if the configured URL is genuinely a tv-video-hub backend: it must answer

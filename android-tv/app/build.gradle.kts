@@ -19,8 +19,10 @@ android {
         applicationId = "com.tvvideohub.tv"
         minSdk = 23
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        // 2 / 1.0.1 — fixes the first-launch crash (CatalogRepository no longer reads
+        // ApiClient.service eagerly). Same signing key, higher versionCode → installable update.
+        versionCode = 2
+        versionName = "1.0.1"
 
         // Exposed to Kotlin via BuildConfig.BACKEND_BASE_URL.
         buildConfigField("String", "BACKEND_BASE_URL", "\"$backendBaseUrl\"")
