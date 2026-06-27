@@ -92,11 +92,45 @@ stale build.
   "armeabi-v7a", "arm64-v8a") }`) — never ship an APK that drops either ARM ABI.
 - **Keep the path & filename stable** (`wwwroot/app/app-release.apk`). The endpoint and the
   committed location are a contract; renaming/moving the file 404s the download link.
-- **For a real over-the-air update**, also bump `versionCode` (and `versionName`) in
-  `android-tv/app/build.gradle.kts` and sign with the **same** keystore — Android only installs
-  an update that is higher-versioned and identically signed. Don't change the signing key.
+- **Bump the version on every change** (mandatory — see the next section): increase
+  `versionCode` (and `versionName`) in `android-tv/app/build.gradle.kts` and sign with the
+  **same** keystore — Android only installs an update that is higher-versioned and identically
+  signed. Don't change the signing key.
 - This is **additive and backward compatible** with the existing self-update flow
   (`/api/app/latest`, `/api/app/download`, `/api/app/releases`) — leave those endpoints intact.
+
+## Bump the version AND sync it to the backend on every android-tv change — non-negotiable
+
+Whenever you modify `android-tv/` app code, a version bump **and** a backend version-metadata
+sync are part of the change — not optional, not "only for a real OTA". Without both, already-
+installed apps never learn an update exists and the self-update flow (`GET /api/app/latest`)
+never fires. Do all of this in the same change:
+
+1. **Bump the app version.** In `android-tv/app/build.gradle.kts` increase `versionCode` by 1
+   (monotonic integer — never reuse or lower it) and bump `versionName` (e.g. `1.0.4` →
+   `1.0.5`). Keep the **same** signing keystore; Android installs an update only when the new
+   `versionCode` is strictly higher **and** the signature matches.
+2. **Rebuild + commit the release APK** into the backend (per the "Ship the release APK" section
+   above), so the bytes served match the new version.
+3. **Sync the new version info to the backend** so `GET /api/app/latest` advertises the update.
+   That endpoint returns the **`AppRelease` config section** in
+   `backend/MediaHub.Api/appsettings.json` (bound via `AppReleaseOptions`, served by
+   `AppEndpoints.MapAppEndpoints`). Update it to describe the **same** build:
+   - `VersionCode` → the new gradle `versionCode` (the app updates only when this is **greater
+     than** its installed build, so this MUST be bumped or no device ever upgrades).
+   - `VersionName` → the new gradle `versionName`.
+   - `Sha256` → lowercase-hex SHA-256 of the new APK (the app verifies the download against it;
+     a stale or blank hash on a real bump makes the update fail).
+   - `SizeBytes`, `Notes` (changelog shown in the update prompt), `PublishedAt` → update to match.
+   - `DownloadUrl` → keep it pointing at where that exact APK is published.
+4. **Keep the three in lockstep.** The gradle `versionCode`/`versionName`, the committed
+   `wwwroot/app/app-release.apk` bytes, and the backend `AppRelease.VersionCode`/`Sha256` must
+   all describe the *same* build. Mismatches break the OTA: an un-bumped backend `VersionCode`
+   means no device sees the update; a `Sha256` that doesn't match the served APK makes the
+   download get rejected.
+5. **Backward compatible.** This only changes config *values* the `/api/app/latest` contract
+   already returns — the response shape is unchanged, so older installed apps keep parsing it.
+   Never lower `VersionCode`, and never rename/repurpose the existing `AppRelease` fields.
 
 ## After coding — build, then hand off with "what to do next"
 

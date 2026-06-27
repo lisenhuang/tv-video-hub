@@ -3,6 +3,7 @@ package com.tvvideohub.tv.player
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
@@ -151,6 +152,13 @@ class PlayerActivity : ComponentActivity() {
                     PlaybackStore.clear(this@PlayerActivity, videoId)
                 }
             }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                // Tell the system we're busy while playing so the TV doesn't think it's idle
+                // and start the screensaver/daydream mid-video. Released when paused/stopped/ended
+                // so the screensaver can still come up when the device is genuinely idle.
+                setKeepScreenOn(isPlaying)
+            }
         })
 
         // Resume where we left off last time (same episode, keyed by stable video id).
@@ -171,6 +179,16 @@ class PlayerActivity : ComponentActivity() {
 
     private fun showMessage(text: String) { messageView.text = text; messageView.isVisible = true }
     private fun hideMessage() { messageView.isVisible = false }
+
+    /**
+     * Hold/release the keep-screen-on window flag. While held, the display stays awake and the
+     * Android TV screensaver/daydream is suppressed — that's what stops the TV from going idle
+     * during playback.
+     */
+    private fun setKeepScreenOn(on: Boolean) {
+        if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
 
     override fun onStart() { super.onStart(); player?.playWhenReady = true }
     override fun onStop() {
