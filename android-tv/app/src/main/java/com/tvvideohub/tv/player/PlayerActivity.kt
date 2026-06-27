@@ -161,6 +161,12 @@ class PlayerActivity : ComponentActivity() {
                 if (playbackState == Player.STATE_ENDED) {
                     PlaybackStore.clear(this@PlayerActivity, videoId)
                 }
+                // Yield the background prefetch to playback ONLY while we're actually starved
+                // (rebuffering). During normal READY playback the prefetch keeps caching ahead at
+                // full speed, building a buffer so a slow patch doesn't stall the picture. (Yielding
+                // on every "loading" tick, as before, starved the prefetch on slow networks — the
+                // player loads almost constantly there, so the cache never got ahead.)
+                setPlaybackStarved(playbackState == Player.STATE_BUFFERING)
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -168,13 +174,6 @@ class PlayerActivity : ComponentActivity() {
                 // and start the screensaver/daydream mid-video. Released when paused/stopped/ended
                 // so the screensaver can still come up when the device is genuinely idle.
                 setKeepScreenOn(isPlaying)
-            }
-
-            override fun onIsLoadingChanged(isLoading: Boolean) {
-                // While the player is actively loading, claim playback priority so the background
-                // prefetch yields the network; release it the moment the player stops loading so
-                // the prefetch can race ahead in the gaps.
-                setPlaybackLoading(isLoading)
             }
         })
 
@@ -217,13 +216,17 @@ class PlayerActivity : ComponentActivity() {
         prefetchJob = null
     }
 
-    /** Acquire/release PRIORITY_PLAYBACK exactly once, keeping add/remove balanced. */
-    private fun setPlaybackLoading(isLoading: Boolean) {
+    /**
+     * Acquire/release PRIORITY_PLAYBACK exactly once (kept add/remove balanced). While held, the
+     * background prefetch blocks so live playback gets the whole pipe; we only hold it while the
+     * player is genuinely starved (rebuffering).
+     */
+    private fun setPlaybackStarved(starved: Boolean) {
         val ptm = DownloadUtil.getPriorityTaskManager()
-        if (isLoading && !holdingPlaybackPriority) {
+        if (starved && !holdingPlaybackPriority) {
             ptm.add(C.PRIORITY_PLAYBACK)
             holdingPlaybackPriority = true
-        } else if (!isLoading && holdingPlaybackPriority) {
+        } else if (!starved && holdingPlaybackPriority) {
             ptm.remove(C.PRIORITY_PLAYBACK)
             holdingPlaybackPriority = false
         }
@@ -268,7 +271,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun releasePlayer() {
         cancelPrefetch()
-        setPlaybackLoading(false) // release any held playback priority so the manager stays balanced
+        setPlaybackStarved(false) // release any held playback priority so the manager stays balanced
         playerView.player = null
         player?.release()
         player = null

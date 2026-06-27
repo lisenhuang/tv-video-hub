@@ -9,6 +9,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
@@ -30,9 +32,14 @@ object VideoThumbnails {
     private const val MAX_W = 640
     private const val MAX_H = 360
     private const val JPEG_QUALITY = 80
+    private const val MAX_CONCURRENT = 3            // cap simultaneous extractions (e.g. a list grid)
 
     // App-lifetime IO scope for fire-and-forget generation (e.g. at download start).
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // Bounds how many previews extract at once so opening a list doesn't fire a presign +
+    // frame-extract job for every card simultaneously.
+    private val gate = Semaphore(MAX_CONCURRENT)
 
     private fun dir(context: Context): File =
         File(context.applicationContext.filesDir, DIR).apply { mkdirs() }
@@ -59,6 +66,26 @@ object VideoThumbnails {
         if (id.isBlank() || sourceUrl.isNullOrBlank()) return null
         val app = context.applicationContext
         return withContext(Dispatchers.IO) { runCatching { generate(app, id, sourceUrl) }.getOrNull() }
+    }
+
+    /**
+     * Bounded generation for list screens. Returns an existing preview immediately; otherwise waits
+     * for one of [MAX_CONCURRENT] slots and only THEN invokes [sourceUrlProvider] — so the
+     * (network) cost of fetching a fresh playback URL is paid only when generation actually runs,
+     * and never for more than a few cards at once. Safe to call from many cards concurrently.
+     */
+    suspend fun ensureGated(context: Context, id: String, sourceUrlProvider: suspend () -> String?): File? {
+        existing(context, id)?.let { return it }
+        if (id.isBlank()) return null
+        return gate.withPermit {
+            existing(context, id) ?: run {
+                val url = runCatching { sourceUrlProvider() }.getOrNull()
+                if (url.isNullOrBlank()) null
+                else withContext(Dispatchers.IO) {
+                    runCatching { generate(context.applicationContext, id, url) }.getOrNull()
+                }
+            }
+        }
     }
 
     private fun generate(context: Context, id: String, sourceUrl: String): File? {
