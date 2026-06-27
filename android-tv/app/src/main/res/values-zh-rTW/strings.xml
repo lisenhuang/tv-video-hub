@@ -11,6 +11,7 @@
 
     <string name="player_loading">正在準備播放…</string>
     <string name="player_error">播放失敗。</string>
+    <string name="player_caching_percent">快取中 %1$d%%</string>
 
     <!-- Common actions -->
     <string name="action_back">返回</string>

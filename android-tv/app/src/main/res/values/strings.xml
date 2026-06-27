@@ -11,6 +11,7 @@
 
     <string name="player_loading">Preparing playback…</string>
     <string name="player_error">Playback failed.</string>
+    <string name="player_caching_percent">Caching %1$d%%</string>
 
     <!-- Common actions -->
     <string name="action_back">Back</string>

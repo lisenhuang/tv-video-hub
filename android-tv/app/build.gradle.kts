@@ -19,11 +19,16 @@ android {
         applicationId = "com.tvvideohub.tv"
         minSdk = 23
         targetSdk = 34
-        // 10 / 1.0.9 — access-code gate + update polish: optional admin-set access code required to
+        // 11 / 1.0.10 — full-episode caching, visible + reliable: the player now buffers up to ~5 min
+        // ahead (byte-capped at 128 MB so it can't OOM) so the seek bar fills far ahead and keeps
+        // filling while paused; a "Caching NN%" indicator shows the background prefetch pulling the
+        // WHOLE episode to disk (advances even while paused); and the prefetch now re-fetches a fresh
+        // presigned URL + resumes on expiry, so long episodes reliably reach 100%.
+        // (10 / 1.0.9 — access-code gate + update polish: optional admin-set access code required to
         // browse content (sent as X-Access-Code; entry screen on launch); the update modal now traps
         // D-pad focus to its own buttons; and a forceUpdate flag from /api/app/latest hides "Later"
         // and blocks BACK for mandatory updates.
-        // (9 / 1.0.8 — smoother playback + list previews: the background prefetch now keeps caching
+        // 9 / 1.0.8 — smoother playback + list previews: the background prefetch now keeps caching
         // ahead during normal playback (it only yields to the player while actually rebuffering), so
         // a slow/bursty network is far less likely to stall the picture; and the catalog list now
         // generates frame previews on the spot (bounded) for videos with no server thumbnail.
@@ -46,8 +51,8 @@ android {
         // press any button/card; AppButton/tapClickable add a touch-tap path, D-pad still works.
         // 2 / 1.0.1 fixed the first-launch crash: CatalogRepository no longer reads
         // ApiClient.service eagerly.) Same signing key, higher versionCode → installable update.
-        versionCode = 10
-        versionName = "1.0.9"
+        versionCode = 11
+        versionName = "1.0.10"
 
         // Exposed to Kotlin via BuildConfig.BACKEND_BASE_URL.
         buildConfigField("String", "BACKEND_BASE_URL", "\"$backendBaseUrl\"")

@@ -135,14 +135,29 @@ object DownloadUtil {
      * stable video id). Caller runs [CacheWriter.cache] on a background thread and calls
      * [CacheWriter.cancel] to stop it (e.g. when the player closes). Bytes already cached by
      * playback are skipped, so this only ever fetches the not-yet-watched remainder.
+     *
+     * [onProgress] (optional) reports caching progress as the writer runs:
+     * `requestLength` = total bytes to cache (the content length, or [C.LENGTH_UNSET] when
+     * unknown), `bytesCached` = total cached so far, `newBytesCached` = bytes added by this tick.
+     * It is invoked on the caller's (background) thread.
      */
-    fun buildPrefetchWriter(context: Context, uri: String, cacheKey: String): CacheWriter {
+    fun buildPrefetchWriter(
+        context: Context,
+        uri: String,
+        cacheKey: String,
+        onProgress: ((requestLength: Long, bytesCached: Long, newBytesCached: Long) -> Unit)? = null
+    ): CacheWriter {
         val cacheDataSource = getPrefetchCacheDataSourceFactory(context).createDataSourceForDownloading()
         val dataSpec = DataSpec.Builder()
             .setUri(android.net.Uri.parse(uri))
             .setKey(cacheKey)
             .build()
-        return CacheWriter(cacheDataSource, dataSpec, /* temporaryBuffer = */ null, /* progressListener = */ null)
+        val listener = onProgress?.let {
+            CacheWriter.ProgressListener { requestLength, bytesCached, newBytesCached ->
+                it(requestLength, bytesCached, newBytesCached)
+            }
+        }
+        return CacheWriter(cacheDataSource, dataSpec, /* temporaryBuffer = */ null, listener)
     }
 
     fun getDownloadManager(context: Context): DownloadManager =
