@@ -8,6 +8,7 @@ using MediaHub.Api.Options;
 using MediaHub.Api.Settings;
 using MediaHub.Api.Storage;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.StaticFiles;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -156,17 +157,29 @@ app.Use(async (context, next) =>
 // index.html for every asset (breaking the admin page entirely). Calling
 // UseStaticFiles() and only THEN UseRouting() lets real files win; just
 // genuine client-side deep links fall through to the SPA fallback.
+// Content types for static files. The bundled APK (wwwroot/app/app-release.apk) is served
+// directly from here — make sure `.apk` maps to the Android package MIME type (it is NOT in
+// the framework default set, so without this the static-file middleware would 404 it).
+var staticContentTypes = new FileExtensionContentTypeProvider();
+staticContentTypes.Mappings[".apk"] = "application/vnd.android.package-archive";
+
 app.UseStaticFiles(new StaticFileOptions
 {
+    ContentTypeProvider = staticContentTypes,
     // The admin dashboard is an SPA: app.js/styles.css/index.html change with every
     // backend upgrade. Without a Cache-Control directive browsers fall back to
     // *heuristic* caching and can serve a stale asset after an upgrade (this is exactly
     // why a fixed page can still look broken until a hard refresh). Force revalidation
     // for /admin assets — the ETag/Last-Modified still let the server answer 304, so
     // it's cheap, but the browser always checks. Non-/admin paths keep default caching.
+    //
+    // The APK lives at a FIXED url (/app/app-release.apk) but its bytes change every release,
+    // so it gets the same no-cache treatment — otherwise a CDN/browser could hand back the
+    // previous build. (The app also verifies sha256, so a stale download would fail closed.)
     OnPrepareResponse = ctx =>
     {
-        if (ctx.Context.Request.Path.StartsWithSegments("/admin"))
+        var path = ctx.Context.Request.Path;
+        if (path.StartsWithSegments("/admin") || path.StartsWithSegments("/app"))
             ctx.Context.Response.Headers.CacheControl = "no-cache";
     }
 });

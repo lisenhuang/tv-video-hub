@@ -42,10 +42,10 @@ compatible with every shipped client:
 - **Don't tighten contracts under an old client's feet** — e.g. don't start requiring a
   new header/param on an existing endpoint that old apps don't send. Version the
   endpoint or default it instead.
-- The self-update endpoints (`/api/app/latest`, `/api/app/download`) and their response
-  shape are a contract with the *currently installed* app — changing them can strand
-  devices on an un-updatable version. Change with extreme care and keep them backward
-  compatible.
+- The self-update path — `GET /api/app/latest` (its JSON shape, esp. an **absolute**
+  `downloadUrl`) plus the static APK at `/app/app-release.apk` — is a contract with the
+  *currently installed* app. Changing it can strand devices on an un-updatable version.
+  Change with extreme care and keep it backward compatible (see the APK sections below).
 
 ### D1 / database migrations (backend)
 
@@ -71,33 +71,36 @@ be run, state why and what you did to keep it buildable.
 
 ## Ship the release APK into the backend on every android-tv change — non-negotiable
 
-The backend serves a **direct APK download** at `GET /api/app/bundled.apk`, backed by a
-**committed** binary at `backend/MediaHub.Api/wwwroot/app/app-release.apk` (it ships inside
-the published image / Docker build). So **whenever you modify `android-tv/` code, rebuild the
-release APK and copy it over that committed file** — otherwise the download link serves a
-stale build.
+**The release APK lives IN this repo and is served BY the backend** — there is no GitHub
+Release and no CI APK build. A single committed binary at
+`backend/MediaHub.Api/wwwroot/app/app-release.apk` ships inside the published image / Docker
+build and is served **directly as a static file** at `GET /app/app-release.apk` (the
+static-file middleware serves it — no endpoint code reads the bytes). So **whenever you modify
+`android-tv/` code, rebuild the release APK and copy it over that committed file** — otherwise
+the download serves a stale build.
 
-- **Build the *release* APK** (signed, installable), not debug:
+- **Build the *release* APK** (signed, installable), not debug, and copy it over the committed file:
   ```
   cd android-tv && ./gradlew :app:assembleRelease
   cp app/build/outputs/apk/release/app-release.apk \
      ../backend/MediaHub.Api/wwwroot/app/app-release.apk
   ```
-  (If `./gradlew` is missing locally, bootstrap gradle `8.11.1` per `gradle-wrapper.properties`.)
+  (If `./gradlew` is missing locally, bootstrap gradle `8.11.1` per `gradle-wrapper.properties`;
+  a cached newer gradle that is AGP-compatible also works.)
+- **Only ONE APK in the repo** — the newest build, at the fixed path/filename
+  `wwwroot/app/app-release.apk`. Don't keep old versions around; overwrite it in place.
+  Renaming/moving it breaks the static path (`/app/app-release.apk`) and the composed `downloadUrl`.
 - **One universal APK that runs on BOTH armeabi-v7a (ARM v7) and arm64-v8a (ARM v8).** Keep it
   a single universal artifact — **do NOT add ABI splits / per-ABI APKs** (that yields separate
-  files and breaks the one fixed download path). The app currently has no native `.so`
-  libraries, so a normal release build is already universal; if you ever add an NDK/native
-  dependency, package both ARM ABIs into the one APK (e.g. `ndk { abiFilters += listOf(
-  "armeabi-v7a", "arm64-v8a") }`) — never ship an APK that drops either ARM ABI.
-- **Keep the path & filename stable** (`wwwroot/app/app-release.apk`). The endpoint and the
-  committed location are a contract; renaming/moving the file 404s the download link.
-- **Bump the version on every change** (mandatory — see the next section): increase
-  `versionCode` (and `versionName`) in `android-tv/app/build.gradle.kts` and sign with the
-  **same** keystore — Android only installs an update that is higher-versioned and identically
-  signed. Don't change the signing key.
-- This is **additive and backward compatible** with the existing self-update flow
-  (`/api/app/latest`, `/api/app/download`, `/api/app/releases`) — leave those endpoints intact.
+  files and breaks the one fixed download path). A normal release build is already universal (it
+  bundles every ABI's libs into the one APK — currently `libandroidx.graphics.path.so` for
+  arm64-v8a, armeabi-v7a, x86, x86_64); if you add an NDK/native dependency, keep both ARM ABIs
+  packaged — never ship an APK that drops either ARM ABI.
+- **Sign with the SAME keystore as previously-shipped builds.** Android installs an update only
+  when it is higher-`versionCode` AND identically signed. The default committed key is
+  `android-tv/keystore/ci-signing.jks`; if installed devices got a build signed with a different
+  key, keep using THAT key or those devices will reject the update ("signatures do not match").
+- **Bump the version on every change** (mandatory — see the next section).
 
 ## Bump the version AND sync it to the backend on every android-tv change — non-negotiable
 
@@ -115,29 +118,32 @@ never fires. Do all of this in the same change:
 3. **Sync the new version info to the backend** so `GET /api/app/latest` advertises the update.
    That endpoint returns the **`AppRelease` config section** in
    `backend/MediaHub.Api/appsettings.json` (bound via `AppReleaseOptions`, served by
-   `AppEndpoints.MapAppEndpoints`). Update it to describe the **same** build:
+   `AppEndpoints.MapAppEndpoints`). Set it from the **committed APK**, in the SAME change as the
+   gradle bump — there is **no CI step to wait on**, and because the served file IS the file you
+   just built, its hash always matches:
    - `VersionCode` → the new gradle `versionCode` (the app updates only when this is **greater
      than** its installed build, so this MUST be bumped or no device ever upgrades).
    - `VersionName` → the new gradle `versionName`.
-   - `Sha256` → lowercase-hex SHA-256 of the new APK (the app verifies the download against it;
-     a stale or blank hash on a real bump makes the update fail).
-   - `SizeBytes`, `Notes` (changelog shown in the update prompt), `PublishedAt` → update to match.
-   - `DownloadUrl` → keep it pointing at where that exact APK is published.
-   - **Do this bump now — do NOT wait for the GitHub Actions build to publish the APK first.**
-     `VersionCode`/`VersionName`/`Notes` are plain metadata: set them in `appsettings.json` in the
-     *same* change as the gradle bump. Only `Sha256` (and `SizeBytes`) describe the published-APK
-     bytes, so those are the *only* fields that may need filling/reconciling once CI publishes the
-     release (a locally-built APK usually hashes differently — different keystore/JDK/gradle). The
-     version bump itself never blocks on CI; just don't *deploy* the backend with a `Sha256` that
-     doesn't match the APK actually served (an unmatched hash fails the update, fail-closed).
+   - `Sha256` → lowercase-hex SHA-256 of the committed APK:
+     `shasum -a 256 backend/MediaHub.Api/wwwroot/app/app-release.apk`. The app verifies the
+     download against it; a stale/blank hash on a real bump makes the update fail (fail-closed).
+   - `SizeBytes` → byte size of that same file (`wc -c < …/app-release.apk`); `Notes` (changelog
+     shown in the update prompt) and `PublishedAt` → update to match.
+   - `DownloadPath` → leave at `/app/app-release.apk` (the static file). The endpoint composes the
+     absolute `downloadUrl` at request time from the caller's base URL + this path, so it always
+     points back at the same backend. Only set the optional absolute `DownloadUrl` to host the APK
+     somewhere else entirely.
 4. **Keep the three in lockstep.** The gradle `versionCode`/`versionName`, the committed
    `wwwroot/app/app-release.apk` bytes, and the backend `AppRelease.VersionCode`/`Sha256` must
    all describe the *same* build. Mismatches break the OTA: an un-bumped backend `VersionCode`
    means no device sees the update; a `Sha256` that doesn't match the served APK makes the
    download get rejected.
-5. **Backward compatible.** This only changes config *values* the `/api/app/latest` contract
-   already returns — the response shape is unchanged, so older installed apps keep parsing it.
-   Never lower `VersionCode`, and never rename/repurpose the existing `AppRelease` fields.
+5. **Backward compatible — keep `downloadUrl` ABSOLUTE.** The shipped app feeds `downloadUrl`
+   straight to Android's `DownloadManager`, which requires an absolute `http(s)` URL — so the
+   backend composes an absolute URL from the request base; it must **never** become a bare
+   relative path, or every already-installed app is stranded (can't parse it → can't update).
+   The response shape is otherwise unchanged, so older apps keep parsing it. Never lower
+   `VersionCode`, and never rename/repurpose existing `AppRelease` fields.
 
 ## After coding — build, then hand off with "what to do next"
 
