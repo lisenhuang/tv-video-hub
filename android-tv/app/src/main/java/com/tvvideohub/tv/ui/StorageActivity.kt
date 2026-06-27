@@ -2,6 +2,7 @@
 
 package com.tvvideohub.tv.ui
 
+import com.tvvideohub.tv.ui.components.AppButton
 import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -39,7 +40,6 @@ import com.tvvideohub.tv.core.formatBytes
 import com.tvvideohub.tv.download.DownloadUtil
 import com.tvvideohub.tv.download.Downloads
 import com.tvvideohub.tv.download.OfflineVideo
-import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import kotlinx.coroutines.delay
@@ -132,7 +132,7 @@ private fun StorageScreen() {
             }
 
             Row(modifier = Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = {
+                AppButton(onClick = {
                     // Clear streamed (non-download) cache; downloads stay (manage in Downloads).
                     items.filter { !it.isDownload }.forEach { DownloadUtil.removeFromCache(context, it.key) }
                 }) { Text(stringResource(R.string.storage_clear_streaming_cache)) }
@@ -187,6 +187,6 @@ private fun StorageRow(item: CachedItem, onDelete: () -> Unit) {
                 style = MaterialTheme.typography.labelSmall, color = colors.onSurface
             )
         }
-        Button(onClick = onDelete) { Text(stringResource(R.string.action_delete)) }
+        AppButton(onClick = onDelete) { Text(stringResource(R.string.action_delete)) }
     }
 }

@@ -1,5 +1,6 @@
 package com.tvvideohub.tv.ui
 
+import com.tvvideohub.tv.ui.components.AppButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,7 +22,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Button
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -47,7 +47,7 @@ fun ErrorState(message: String, onRetry: () -> Unit) {
                 color = Color(0xFF8893A7),
                 modifier = Modifier.padding(top = 8.dp, bottom = 20.dp)
             )
-            Button(
+            AppButton(
                 onClick = onRetry,
                 modifier = Modifier.focusRequester(retryFocus)
             ) {
@@ -151,13 +151,13 @@ private fun AvailablePanel(
             .padding(top = 24.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
     ) {
-        Button(
+        AppButton(
             onClick = onConfirm,
             modifier = Modifier.focusRequester(updateFocus)
         ) {
             Text(text = stringResource(R.string.update_action_update))
         }
-        Button(onClick = onDismiss) {
+        AppButton(onClick = onDismiss) {
             Text(text = stringResource(R.string.update_action_later))
         }
     }
@@ -189,13 +189,13 @@ private fun NeedsPermissionPanel(
             .padding(top = 24.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
     ) {
-        Button(
+        AppButton(
             onClick = onOpenSettings,
             modifier = Modifier.focusRequester(focus)
         ) {
             Text(text = stringResource(R.string.update_action_open_settings))
         }
-        Button(onClick = onDismiss) {
+        AppButton(onClick = onDismiss) {
             Text(text = stringResource(R.string.update_action_later))
         }
     }
@@ -218,7 +218,7 @@ private fun FailedPanel(message: String, onDismiss: () -> Unit) {
         color = Color(0xFF8893A7),
         modifier = Modifier.padding(top = 12.dp, bottom = 24.dp)
     )
-    Button(
+    AppButton(
         onClick = onDismiss,
         modifier = Modifier.focusRequester(focus)
     ) {

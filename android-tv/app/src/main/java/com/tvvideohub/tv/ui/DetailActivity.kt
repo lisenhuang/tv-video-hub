@@ -2,6 +2,7 @@
 
 package com.tvvideohub.tv.ui
 
+import com.tvvideohub.tv.ui.components.AppButton
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -45,7 +46,6 @@ import com.tvvideohub.tv.data.dto.VideoDetail
 import com.tvvideohub.tv.download.DownloadUtil
 import com.tvvideohub.tv.download.Downloads
 import com.tvvideohub.tv.player.PlayerActivity
-import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import kotlinx.coroutines.delay
@@ -118,7 +118,7 @@ private fun DetailScreen(videoId: String, onBack: () -> Unit) {
             loadError -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(stringResource(R.string.detail_load_error), style = MaterialTheme.typography.titleLarge, color = colors.onBackground)
-                    Button(onClick = onBack, modifier = Modifier.padding(top = 16.dp)) { Text(stringResource(R.string.action_back)) }
+                    AppButton(onClick = onBack, modifier = Modifier.padding(top = 16.dp)) { Text(stringResource(R.string.action_back)) }
                 }
             }
             detail == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -153,9 +153,9 @@ private fun DetailScreen(videoId: String, onBack: () -> Unit) {
                             modifier = Modifier.padding(top = 24.dp),
                             horizontalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            Button(onClick = { startPlayback(context, d, download) }) { Text(stringResource(R.string.action_play)) }
+                            AppButton(onClick = { startPlayback(context, d, download) }) { Text(stringResource(R.string.action_play)) }
                             DownloadButton(context, d, download)
-                            Button(onClick = onBack) { Text(stringResource(R.string.action_back)) }
+                            AppButton(onClick = onBack) { Text(stringResource(R.string.action_back)) }
                         }
                     }
                 }
@@ -202,13 +202,13 @@ private fun DownloadProgress(download: Download?, modifier: Modifier = Modifier)
 private fun DownloadButton(context: Context, detail: VideoDetail, download: Download?) {
     when (download?.state) {
         null, Download.STATE_FAILED, Download.STATE_REMOVING ->
-            Button(onClick = { Downloads.start(context, detail) }) { Text(stringResource(R.string.action_download)) }
+            AppButton(onClick = { Downloads.start(context, detail) }) { Text(stringResource(R.string.action_download)) }
         Download.STATE_DOWNLOADING, Download.STATE_QUEUED ->
-            Button(onClick = { Downloads.remove(context, detail.id) }) { Text(stringResource(R.string.action_cancel)) }
+            AppButton(onClick = { Downloads.remove(context, detail.id) }) { Text(stringResource(R.string.action_cancel)) }
         Download.STATE_COMPLETED ->
-            Button(onClick = { Downloads.remove(context, detail.id) }) { Text(stringResource(R.string.action_remove_download)) }
+            AppButton(onClick = { Downloads.remove(context, detail.id) }) { Text(stringResource(R.string.action_remove_download)) }
         else ->
-            Button(onClick = { Downloads.start(context, detail) }) { Text(stringResource(R.string.action_download)) }
+            AppButton(onClick = { Downloads.start(context, detail) }) { Text(stringResource(R.string.action_download)) }
     }
 }
 

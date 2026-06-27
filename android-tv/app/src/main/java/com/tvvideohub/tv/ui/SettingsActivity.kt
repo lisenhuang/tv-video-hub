@@ -2,6 +2,7 @@
 
 package com.tvvideohub.tv.ui
 
+import com.tvvideohub.tv.ui.components.AppButton
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -37,7 +38,6 @@ import com.tvvideohub.tv.data.CatalogRepository
 import com.tvvideohub.tv.data.api.ApiClient
 import com.tvvideohub.tv.ui.components.OutlinedInput
 import com.tvvideohub.tv.ui.components.ParentalGate
-import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import kotlinx.coroutines.launch
@@ -117,18 +117,18 @@ private fun SettingsScreen(onBack: () -> Unit, onLanguageChanged: () -> Unit) {
                 Text(it, style = MaterialTheme.typography.bodyMedium, color = colors.onSurface, modifier = Modifier.padding(top = 8.dp))
             }
             Row(modifier = Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = {
-                    if (url.isBlank()) return@Button
+                AppButton(onClick = {
+                    if (url.isBlank()) return@AppButton
                     scope.launch {
                         ApiClient.configure(url)
                         status = if (repo.isBackendReachable()) reachableText else notReachableText
                     }
                 }) { Text(stringResource(R.string.action_test)) }
-                Button(onClick = {
-                    if (url.isBlank()) return@Button
+                AppButton(onClick = {
+                    if (url.isBlank()) return@AppButton
                     // Gate a change to an already-configured URL behind a math quiz so
                     // kids can't alter it; saving the same value is a no-op anyway.
-                    if (url == settings.baseUrl.value) { commitUrl(); return@Button }
+                    if (url == settings.baseUrl.value) { commitUrl(); return@AppButton }
                     showGate = true
                 }) { Text(stringResource(R.string.action_save)) }
             }
@@ -143,7 +143,7 @@ private fun SettingsScreen(onBack: () -> Unit, onLanguageChanged: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 ThemeMode.entries.forEach { mode ->
                     val selected = mode == themeMode
-                    Button(onClick = { settings.setThemeMode(mode) }) {
+                    AppButton(onClick = { settings.setThemeMode(mode) }) {
                         Text((if (selected) "● " else "") + stringResource(mode.labelRes()))
                     }
                 }
@@ -159,7 +159,7 @@ private fun SettingsScreen(onBack: () -> Unit, onLanguageChanged: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 AppLanguage.entries.forEach { lang ->
                     val selected = lang == language
-                    Button(onClick = {
+                    AppButton(onClick = {
                         if (lang != language) {
                             settings.setLanguage(lang)
                             onLanguageChanged()
@@ -177,11 +177,11 @@ private fun SettingsScreen(onBack: () -> Unit, onLanguageChanged: () -> Unit) {
                 color = colors.onBackground,
                 modifier = Modifier.padding(top = 28.dp, bottom = 8.dp)
             )
-            Button(onClick = { context.startActivity(Intent(context, StorageActivity::class.java)) }) {
+            AppButton(onClick = { context.startActivity(Intent(context, StorageActivity::class.java)) }) {
                 Text(stringResource(R.string.settings_manage_storage))
             }
 
-            Button(onClick = onBack, modifier = Modifier.padding(top = 32.dp)) { Text(stringResource(R.string.action_back)) }
+            AppButton(onClick = onBack, modifier = Modifier.padding(top = 32.dp)) { Text(stringResource(R.string.action_back)) }
         }
 
         if (showGate) {

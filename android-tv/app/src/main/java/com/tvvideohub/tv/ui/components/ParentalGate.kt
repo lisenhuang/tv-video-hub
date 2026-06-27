@@ -26,7 +26,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.tvvideohub.tv.R
@@ -96,10 +95,10 @@ fun ParentalGate(
                 modifier = Modifier.padding(top = 20.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Button(onClick = {
+                AppButton(onClick = {
                     if (answer.toIntOrNull() == a * b) onPass() else { wrong = true; round++ }
                 }) { Text(stringResource(R.string.action_ok)) }
-                Button(onClick = onCancel) { Text(stringResource(R.string.action_cancel)) }
+                AppButton(onClick = onCancel) { Text(stringResource(R.string.action_cancel)) }
             }
         }
     }

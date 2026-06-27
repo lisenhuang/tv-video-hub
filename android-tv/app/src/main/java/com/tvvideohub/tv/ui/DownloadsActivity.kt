@@ -2,6 +2,7 @@
 
 package com.tvvideohub.tv.ui
 
+import com.tvvideohub.tv.ui.components.tapClickable
 import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -125,7 +126,7 @@ private fun OfflineCard(item: OfflineVideo, onPlay: () -> Unit, onRemove: () -> 
     val colors = MaterialTheme.colorScheme
     Card(
         onClick = { if (item.isComplete) onPlay() else onRemove() },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().tapClickable { if (item.isComplete) onPlay() else onRemove() },
         scale = CardDefaults.scale(focusedScale = 1.08f),
         border = CardDefaults.border(focusedBorder = Border(BorderStroke(3.dp, colors.primary)))
     ) {

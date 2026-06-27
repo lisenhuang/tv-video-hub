@@ -2,6 +2,8 @@
 
 package com.tvvideohub.tv.ui
 
+import com.tvvideohub.tv.ui.components.AppButton
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,7 +24,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.tvvideohub.tv.R
@@ -94,9 +95,9 @@ fun BaseUrlScreen(
                 modifier = Modifier.padding(top = 24.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Button(
+                AppButton(
                     onClick = {
-                        if (url.isBlank() || testing) return@Button
+                        if (url.isBlank() || testing) return@AppButton
                         testing = true
                         scope.launch {
                             testResult = runCatching { onTest(url) }.getOrDefault(false)
@@ -105,9 +106,9 @@ fun BaseUrlScreen(
                     }
                 ) { Text(stringResource(if (testing) R.string.action_testing else R.string.action_test)) }
 
-                Button(onClick = {
+                AppButton(onClick = {
                     // Validate it's a real tv-video-hub backend before saving — reject random URLs.
-                    if (url.isBlank() || testing) return@Button
+                    if (url.isBlank() || testing) return@AppButton
                     testing = true
                     scope.launch {
                         val ok = runCatching { onTest(url) }.getOrDefault(false)
@@ -120,7 +121,7 @@ fun BaseUrlScreen(
                 }
 
                 if (onOpenDownloads != null) {
-                    Button(onClick = onOpenDownloads) { Text(stringResource(R.string.action_open_downloads)) }
+                    AppButton(onClick = onOpenDownloads) { Text(stringResource(R.string.action_open_downloads)) }
                 }
             }
         }
@@ -141,8 +142,8 @@ fun OfflineScreen(onOpenDownloads: () -> Unit, onRetry: () -> Unit) {
                 modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
             )
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Button(onClick = onOpenDownloads) { Text(stringResource(R.string.offline_action_view_downloads)) }
-                Button(onClick = onRetry) { Text(stringResource(R.string.action_retry)) }
+                AppButton(onClick = onOpenDownloads) { Text(stringResource(R.string.offline_action_view_downloads)) }
+                AppButton(onClick = onRetry) { Text(stringResource(R.string.action_retry)) }
             }
         }
     }

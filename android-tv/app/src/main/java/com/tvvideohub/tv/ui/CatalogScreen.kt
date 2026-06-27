@@ -1,5 +1,7 @@
 package com.tvvideohub.tv.ui
 
+import com.tvvideohub.tv.ui.components.AppButton
+import com.tvvideohub.tv.ui.components.tapClickable
 import android.content.Intent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
@@ -36,7 +38,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.Border
-import androidx.tv.material3.Button
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -118,8 +119,8 @@ private fun CatalogHeader(onOpenDownloads: () -> Unit, onOpenSettings: () -> Uni
             modifier = Modifier.weight(1f)
         )
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = onOpenDownloads) { Text(stringResource(R.string.action_open_downloads)) }
-            Button(onClick = onOpenSettings) { Text(stringResource(R.string.action_open_settings)) }
+            AppButton(onClick = onOpenDownloads) { Text(stringResource(R.string.action_open_downloads)) }
+            AppButton(onClick = onOpenSettings) { Text(stringResource(R.string.action_open_settings)) }
         }
     }
 }
@@ -171,7 +172,7 @@ private fun VideoCard(
 ) {
     Card(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().tapClickable(onClick = onClick),
         scale = CardDefaults.scale(focusedScale = 1.08f),
         border = CardDefaults.border(
             focusedBorder = Border(BorderStroke(3.dp, MaterialTheme.colorScheme.primary))
