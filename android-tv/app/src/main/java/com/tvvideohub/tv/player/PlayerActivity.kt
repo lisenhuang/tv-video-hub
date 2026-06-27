@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.annotation.OptIn
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -18,6 +19,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import com.tvvideohub.tv.core.LocaleHelper
+import com.tvvideohub.tv.core.PlaybackStore
 import com.tvvideohub.tv.core.SettingsStore
 import com.tvvideohub.tv.data.CatalogRepository
 import com.tvvideohub.tv.download.DownloadUtil
@@ -144,10 +146,16 @@ class PlayerActivity : ComponentActivity() {
                 if (playbackState == Player.STATE_READY || playbackState == Player.STATE_BUFFERING) {
                     hideMessage()
                 }
+                // Finished watching → forget the resume point so it starts over next time.
+                if (playbackState == Player.STATE_ENDED) {
+                    PlaybackStore.clear(this@PlayerActivity, videoId)
+                }
             }
         })
 
-        exo.setMediaItem(mediaItem)
+        // Resume where we left off last time (same episode, keyed by stable video id).
+        val resumeMs = PlaybackStore.positionFor(this, videoId)
+        exo.setMediaItem(mediaItem, if (resumeMs > 0L) resumeMs else C.TIME_UNSET)
         exo.playWhenReady = true
         exo.prepare()
         playerView.requestFocus()
@@ -165,8 +173,20 @@ class PlayerActivity : ComponentActivity() {
     private fun hideMessage() { messageView.isVisible = false }
 
     override fun onStart() { super.onStart(); player?.playWhenReady = true }
-    override fun onStop() { super.onStop(); player?.playWhenReady = false }
+    override fun onStop() {
+        super.onStop()
+        // Remember the position before we pause, so closing/reopening resumes here.
+        saveProgress()
+        player?.playWhenReady = false
+    }
     override fun onDestroy() { super.onDestroy(); releasePlayer() }
+
+    /** Persist the current position for [videoId] (cleared automatically once finished). */
+    private fun saveProgress() {
+        val p = player ?: return
+        if (videoId.isBlank()) return
+        PlaybackStore.save(this, videoId, p.currentPosition, p.duration)
+    }
 
     private fun releasePlayer() {
         playerView.player = null

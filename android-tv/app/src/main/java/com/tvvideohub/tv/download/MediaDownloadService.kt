@@ -57,6 +57,11 @@ object Downloads {
             DownloadUtil.buildRequest(detail),
             /* foreground = */ false
         )
+        // If the API gave no thumbnail, grab a preview frame now (network is up) and persist it,
+        // so this download shows a real image later — even fully offline.
+        if (detail.thumbnailUrl == null) {
+            com.tvvideohub.tv.core.VideoThumbnails.ensureAsync(context, detail.id, detail.playbackUrl)
+        }
     }
 
     fun remove(context: android.content.Context, videoId: String) {

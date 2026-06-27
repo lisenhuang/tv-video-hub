@@ -1,6 +1,7 @@
 package com.tvvideohub.tv.ui
 
 import com.tvvideohub.tv.ui.components.AppButton
+import com.tvvideohub.tv.ui.components.rememberVideoFrame
 import com.tvvideohub.tv.ui.components.tapClickable
 import android.content.Intent
 import androidx.compose.foundation.BorderStroke
@@ -180,15 +181,23 @@ private fun VideoCard(
     ) {
         Column {
             Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
-                if (video.thumbnailUrl != null) {
-                    AsyncImage(
+                // No API thumbnail? fall back to a frame extracted from the video itself
+                // (generated on detail open / at download start), keyed by stable id.
+                val frame = if (video.thumbnailUrl == null) rememberVideoFrame(video.id) else null
+                when {
+                    video.thumbnailUrl != null -> AsyncImage(
                         model = video.thumbnailUrl,
                         contentDescription = video.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
-                } else {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    frame != null -> AsyncImage(
+                        model = frame,
+                        contentDescription = video.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text("▶", color = Color(0xFF8893A7), style = MaterialTheme.typography.headlineLarge)
                     }
                 }

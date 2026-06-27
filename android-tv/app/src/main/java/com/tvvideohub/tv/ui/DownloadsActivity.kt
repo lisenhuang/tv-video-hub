@@ -2,6 +2,7 @@
 
 package com.tvvideohub.tv.ui
 
+import com.tvvideohub.tv.ui.components.rememberVideoFrame
 import com.tvvideohub.tv.ui.components.tapClickable
 import android.content.Context
 import android.os.Bundle
@@ -132,13 +133,19 @@ private fun OfflineCard(item: OfflineVideo, onPlay: () -> Unit, onRemove: () -> 
     ) {
         Column {
             Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f), contentAlignment = Alignment.Center) {
-                if (item.thumbnailUrl != null) {
-                    AsyncImage(
+                // No API thumbnail? show a frame extracted from the video (generated at download
+                // start, while the network was up), so downloaded items get a real offline preview.
+                val frame = if (item.thumbnailUrl == null) rememberVideoFrame(item.id) else null
+                when {
+                    item.thumbnailUrl != null -> AsyncImage(
                         model = item.thumbnailUrl, contentDescription = item.title,
                         contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
                     )
-                } else {
-                    Text("▶", style = MaterialTheme.typography.headlineLarge, color = colors.onSurface)
+                    frame != null -> AsyncImage(
+                        model = frame, contentDescription = item.title,
+                        contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+                    )
+                    else -> Text("▶", style = MaterialTheme.typography.headlineLarge, color = colors.onSurface)
                 }
             }
             val status = when (item.state) {

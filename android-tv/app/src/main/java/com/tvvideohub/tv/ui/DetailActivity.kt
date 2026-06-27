@@ -3,6 +3,8 @@
 package com.tvvideohub.tv.ui
 
 import com.tvvideohub.tv.ui.components.AppButton
+import com.tvvideohub.tv.ui.components.rememberVideoFrame
+import com.tvvideohub.tv.core.VideoThumbnails
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -126,18 +128,27 @@ private fun DetailScreen(videoId: String, onBack: () -> Unit) {
             }
             else -> {
                 val d = detail!!
+                // No API thumbnail? extract one from the playback URL and persist it (keyed by id)
+                // so the catalog grid and offline downloads can reuse it later.
+                LaunchedEffect(d.id, d.thumbnailUrl, d.playbackUrl) {
+                    if (d.thumbnailUrl == null) VideoThumbnails.ensure(context, d.id, d.playbackUrl)
+                }
                 Row(Modifier.fillMaxSize()) {
                     Box(
                         Modifier.weight(1f).aspectRatio(16f / 9f),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (d.thumbnailUrl != null) {
-                            AsyncImage(
+                        val frame = if (d.thumbnailUrl == null) rememberVideoFrame(d.id) else null
+                        when {
+                            d.thumbnailUrl != null -> AsyncImage(
                                 model = d.thumbnailUrl, contentDescription = d.title,
                                 contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
                             )
-                        } else {
-                            Text("▶", style = MaterialTheme.typography.headlineLarge, color = colors.onSurface)
+                            frame != null -> AsyncImage(
+                                model = frame, contentDescription = d.title,
+                                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+                            )
+                            else -> Text("▶", style = MaterialTheme.typography.headlineLarge, color = colors.onSurface)
                         }
                     }
                     Column(Modifier.weight(1f).padding(start = 32.dp)) {

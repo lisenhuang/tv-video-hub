@@ -19,12 +19,14 @@ android {
         applicationId = "com.tvvideohub.tv"
         minSdk = 23
         targetSdk = 34
-        // 3 / 1.0.2 — touch support: tv-material clickables are D-pad-only, so phones couldn't
-        // press any button/card; AppButton/tapClickable add a touch-tap path (D-pad still works).
-        // (2 / 1.0.1 fixed the first-launch crash: CatalogRepository no longer reads
+        // 4 / 1.0.3 — client-side video previews (extract a frame when the API has no thumbnail,
+        // cached by stable id) + resume playback position per episode on reopen.
+        // (3 / 1.0.2 added touch support: tv-material clickables are D-pad-only, so phones couldn't
+        // press any button/card; AppButton/tapClickable add a touch-tap path, D-pad still works.
+        // 2 / 1.0.1 fixed the first-launch crash: CatalogRepository no longer reads
         // ApiClient.service eagerly.) Same signing key, higher versionCode → installable update.
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.0.3"
 
         // Exposed to Kotlin via BuildConfig.BACKEND_BASE_URL.
         buildConfigField("String", "BACKEND_BASE_URL", "\"$backendBaseUrl\"")
