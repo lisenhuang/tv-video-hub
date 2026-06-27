@@ -342,10 +342,20 @@ function wireVideoForm() {
   // extension), unless the admin has already typed their own title. The backend
   // auto-generates the object key, so a file (+ optional metadata) is all that's needed.
   let titleEdited = false;
+  let durationEdited = false;
   $('v-title').addEventListener('input', () => { titleEdited = true; });
+  $('v-duration').addEventListener('input', () => { durationEdited = true; });
   $('v-file').addEventListener('change', () => {
     const f = $('v-file').files[0];
-    if (f && !titleEdited) $('v-title').value = f.name.replace(/\.[^/.]+$/, '');
+    if (!f) { show($('v-detected'), false); return; }
+    if (!titleEdited) $('v-title').value = f.name.replace(/\.[^/.]+$/, '');
+    // Size is known immediately; the backend stores the authoritative received count.
+    showDetected(f.size, null);
+    // Duration must be decoded from the file's metadata, locally in the browser.
+    readVideoDuration(f, (seconds) => {
+      if (seconds != null && !durationEdited) $('v-duration').value = seconds;
+      showDetected(f.size, seconds);
+    });
   });
 
   $('upload-form').addEventListener('submit', async (e) => {
@@ -389,7 +399,9 @@ function wireVideoForm() {
       setProgressDone();
       banner('Video added.', 'success');
       $('upload-form').reset();
-      titleEdited = false; // form cleared → let the next file auto-fill the title again
+      titleEdited = false;    // form cleared → let the next file auto-fill the title again
+      durationEdited = false; // …and the duration
+      show($('v-detected'), false);
       // Briefly leave the completed bar visible, then tuck it away.
       setTimeout(() => showProgress(false), 900);
       await loadVideos();
@@ -525,6 +537,37 @@ function newUploadId() {
   return 'u-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
 }
 
+// Read a video file's duration (seconds) locally via a throwaway <video> element —
+// no upload, no network. Calls back with a rounded integer, or null if the browser
+// can't decode this format's metadata (e.g. MKV / exotic codecs).
+function readVideoDuration(file, cb) {
+  const url = URL.createObjectURL(file);
+  const v = document.createElement('video');
+  v.preload = 'metadata';
+  let done = false;
+  const finish = (seconds) => {
+    if (done) return;
+    done = true;
+    URL.revokeObjectURL(url);
+    cb(seconds);
+  };
+  v.addEventListener('loadedmetadata', () =>
+    finish(isFinite(v.duration) && v.duration > 0 ? Math.round(v.duration) : null));
+  v.addEventListener('error', () => finish(null));
+  v.src = url;
+}
+
+// Show what we detected about the picked file under the file input.
+function showDetected(sizeBytes, durationSeconds) {
+  const el = $('v-detected');
+  const parts = [];
+  if (sizeBytes != null) parts.push(fmtBytes(sizeBytes));
+  if (durationSeconds != null) parts.push(fmtDuration(durationSeconds));
+  if (parts.length === 0) { show(el, false); return; }
+  el.textContent = 'Detected: ' + parts.join(' · ');
+  show(el, true);
+}
+
 async function loadVideos() {
   const { res, data } = await apiJson('/api/admin/videos', 'GET');
   if (res.status === 401) { await refreshState(); return; }
@@ -542,6 +585,7 @@ async function loadVideos() {
     const tr = document.createElement('tr');
     tr.appendChild(td(v.title));
     tr.appendChild(td(fmtDuration(v.durationSeconds)));
+    tr.appendChild(td(fmtBytes(v.sizeBytes)));
     tr.appendChild(td(fmtDate(v.createdAt)));
     const actions = document.createElement('td');
     actions.className = 'row-actions';

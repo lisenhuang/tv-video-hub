@@ -18,7 +18,48 @@ public sealed class EfSchemaInitializer(EfContextFactory factory, ILogger<EfSche
         EnsureSqliteDirectory(conn);
 
         await db.Database.EnsureCreatedAsync(ct);
+
+        // Additive, forward-only migration: EnsureCreated() builds missing tables but never
+        // alters an existing one, so add videos.size_bytes for databases created before it.
+        // Nullable, no default → safe on top of production data; idempotent (probe first).
+        await EnsureVideoSizeColumnAsync(db, ct);
+
         log.LogInformation("EF schema ensured for provider {Provider}.", db.Database.ProviderName);
+    }
+
+    private static async Task EnsureVideoSizeColumnAsync(MediaHubDbContext db, CancellationToken ct)
+    {
+        // Present already? (fresh DBs get it from EnsureCreated; migrated DBs from a prior run)
+        if (await VideoSizeColumnExistsAsync(db, ct)) return;
+
+        // SQL Server spells it "ADD <col>"; SQLite/PostgreSQL use "ADD COLUMN <col>".
+        // BIGINT maps cleanly to long? on all three bundled providers.
+        var sql = db.Database.IsSqlServer()
+            ? "ALTER TABLE videos ADD size_bytes BIGINT"
+            : "ALTER TABLE videos ADD COLUMN size_bytes BIGINT";
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(sql, ct);
+        }
+        catch
+        {
+            // A concurrent instance may have added it between the check and the ALTER.
+            // Only surface the error if the column is genuinely still missing.
+            if (!await VideoSizeColumnExistsAsync(db, ct)) throw;
+        }
+    }
+
+    private static async Task<bool> VideoSizeColumnExistsAsync(MediaHubDbContext db, CancellationToken ct)
+    {
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("SELECT size_bytes FROM videos WHERE 1 = 0", ct);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static void EnsureSqliteDirectory(string? connectionString)

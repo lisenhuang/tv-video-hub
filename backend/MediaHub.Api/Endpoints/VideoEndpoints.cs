@@ -16,7 +16,7 @@ public static class VideoEndpoints
         {
             var videos = await repo.ListAsync(ct);
             var dto = new VideoListDto(videos.Select(v => new VideoSummaryDto(
-                v.Id, v.Title, v.Description, v.ThumbnailUrl, v.DurationSeconds, v.CreatedAt)).ToList());
+                v.Id, v.Title, v.Description, v.ThumbnailUrl, v.DurationSeconds, v.CreatedAt, v.SizeBytes)).ToList());
             return Results.Ok(dto);
         });
 
@@ -35,7 +35,7 @@ public static class VideoEndpoints
 
             return Results.Ok(new VideoDetailDto(
                 v.Id, v.Title, v.Description, v.ThumbnailUrl, v.DurationSeconds,
-                url, expires, v.MimeType, v.CreatedAt));
+                url, expires, v.MimeType, v.CreatedAt, v.SizeBytes));
         });
 
         // POST /api/videos — register a video (JSON referencing an R2 object, or

@@ -12,6 +12,10 @@ public sealed class Video
 
     public string? ThumbnailUrl { get; set; }
     public int? DurationSeconds { get; set; }
+
+    /// <summary>Size of the stored object in bytes. Nullable: older rows predate this column.</summary>
+    public long? SizeBytes { get; set; }
+
     public string MimeType { get; set; } = "video/mp4";
     public DateTimeOffset CreatedAt { get; set; }
 }

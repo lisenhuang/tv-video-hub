@@ -29,11 +29,11 @@ public sealed class D1VideoRepository(D1Client d1) : IVideoRepository
         await d1.ExecuteAsync(
             """
             INSERT INTO videos
-                (id, title, description, object_key, thumbnail_url, duration_seconds, mime_type, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+                (id, title, description, object_key, thumbnail_url, duration_seconds, size_bytes, mime_type, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             [v.Id, v.Title, v.Description, v.ObjectKey, v.ThumbnailUrl,
-             v.DurationSeconds, v.MimeType, v.CreatedAt],
+             v.DurationSeconds, v.SizeBytes, v.MimeType, v.CreatedAt],
             ct);
     }
 
@@ -45,6 +45,7 @@ public sealed class D1VideoRepository(D1Client d1) : IVideoRepository
         ObjectKey = r.GetRequiredString("object_key"),
         ThumbnailUrl = r.GetString("thumbnail_url"),
         DurationSeconds = r.GetInt("duration_seconds"),
+        SizeBytes = r.GetNullableLong("size_bytes"),
         MimeType = r.GetString("mime_type") ?? "video/mp4",
         CreatedAt = r.GetDate("created_at"),
     };

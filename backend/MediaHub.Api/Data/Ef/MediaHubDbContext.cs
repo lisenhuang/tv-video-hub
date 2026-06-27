@@ -28,6 +28,7 @@ public sealed class MediaHubDbContext(DbContextOptions<MediaHubDbContext> option
             e.Property(v => v.ObjectKey).HasColumnName("object_key").IsRequired();
             e.Property(v => v.ThumbnailUrl).HasColumnName("thumbnail_url");
             e.Property(v => v.DurationSeconds).HasColumnName("duration_seconds");
+            e.Property(v => v.SizeBytes).HasColumnName("size_bytes");
             e.Property(v => v.MimeType).HasColumnName("mime_type").IsRequired();
             e.Property(v => v.CreatedAt).HasColumnName("created_at");
             e.HasIndex(v => v.CreatedAt).HasDatabaseName("ix_videos_created_at");

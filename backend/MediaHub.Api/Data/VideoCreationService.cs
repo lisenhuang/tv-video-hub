@@ -69,6 +69,9 @@ public sealed class VideoCreationService(VideoRepository repo, StorageRouter sto
             ObjectKey = key,
             ThumbnailUrl = NullIfEmpty(form["thumbnailUrl"]),
             DurationSeconds = int.TryParse(form["durationSeconds"], out var d) ? d : null,
+            // Size comes from the bytes we actually received — authoritative and
+            // unspoofable — not from a client-supplied field.
+            SizeBytes = file.Length,
             MimeType = mime,
             CreatedAt = now,
         };
@@ -94,6 +97,7 @@ public sealed class VideoCreationService(VideoRepository repo, StorageRouter sto
             ObjectKey = body.ObjectKey,
             ThumbnailUrl = body.ThumbnailUrl,
             DurationSeconds = body.DurationSeconds,
+            SizeBytes = body.SizeBytes, // optional; the object already lives in storage
             MimeType = string.IsNullOrWhiteSpace(body.MimeType) ? "video/mp4" : body.MimeType,
             CreatedAt = DateTimeOffset.UtcNow,
         };
@@ -127,7 +131,7 @@ public sealed class VideoCreationService(VideoRepository repo, StorageRouter sto
     }
 
     public static VideoSummaryDto ToSummary(Video v) =>
-        new(v.Id, v.Title, v.Description, v.ThumbnailUrl, v.DurationSeconds, v.CreatedAt);
+        new(v.Id, v.Title, v.Description, v.ThumbnailUrl, v.DurationSeconds, v.CreatedAt, v.SizeBytes);
 
     private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
 

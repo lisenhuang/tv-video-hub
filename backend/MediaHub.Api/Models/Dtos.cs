@@ -3,13 +3,16 @@ namespace MediaHub.Api.Models;
 // Response/request shapes mirror the contract documented in the repo root README.
 // System.Text.Json serializes these as camelCase (configured in Program.cs).
 
+// SizeBytes is appended last (additive): new optional fields go at the end so the
+// record's existing positional shape is untouched. JSON is matched by name regardless.
 public sealed record VideoSummaryDto(
     string Id,
     string Title,
     string? Description,
     string? ThumbnailUrl,
     int? DurationSeconds,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    long? SizeBytes = null);
 
 public sealed record VideoListDto(IReadOnlyList<VideoSummaryDto> Videos);
 
@@ -22,7 +25,8 @@ public sealed record VideoDetailDto(
     string PlaybackUrl,
     DateTimeOffset PlaybackUrlExpiresAt,
     string MimeType,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    long? SizeBytes = null);
 
 /// <summary>JSON body for registering a video that already exists in R2.</summary>
 public sealed record CreateVideoRequest(
@@ -31,7 +35,8 @@ public sealed record CreateVideoRequest(
     string ObjectKey,
     string? ThumbnailUrl,
     int? DurationSeconds,
-    string? MimeType);
+    string? MimeType,
+    long? SizeBytes = null);
 
 public sealed record AppReleaseDto(
     int VersionCode,

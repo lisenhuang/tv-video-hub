@@ -164,6 +164,15 @@ public sealed class D1Row : Dictionary<string, JsonElement>
             ? v.GetInt64()
             : v.ValueKind is JsonValueKind.String && long.TryParse(v.GetString(), out var n) ? n : 0;
 
+    /// <summary>Long value, or null when the column is missing/SQL NULL (vs <see cref="GetLong"/>'s 0).</summary>
+    public long? GetNullableLong(string col)
+    {
+        if (!TryGetValue(col, out var v)) return null;
+        if (v.ValueKind is JsonValueKind.Number) return v.GetInt64();
+        if (v.ValueKind is JsonValueKind.String && long.TryParse(v.GetString(), out var n)) return n;
+        return null;
+    }
+
     public DateTimeOffset GetDate(string col) =>
         DateTimeOffset.TryParse(GetString(col), out var d) ? d : default;
 }

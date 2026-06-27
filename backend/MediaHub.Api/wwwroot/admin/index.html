@@ -145,6 +145,7 @@
             <label>File
               <input id="v-file" type="file" name="file" accept="video/*" />
             </label>
+            <p id="v-detected" class="hint" hidden></p>
             <label>Title
               <input id="v-title" type="text" name="title" placeholder="auto-filled from the file name" />
             </label>
@@ -195,7 +196,7 @@
           <div class="table-wrap">
             <table id="videos-table">
               <thead>
-                <tr><th>Title</th><th>Duration</th><th>Created</th><th></th></tr>
+                <tr><th>Title</th><th>Duration</th><th>Size</th><th>Created</th><th></th></tr>
               </thead>
               <tbody></tbody>
             </table>
