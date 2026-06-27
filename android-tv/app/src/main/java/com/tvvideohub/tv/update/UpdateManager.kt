@@ -70,18 +70,26 @@ class UpdateManager(private val context: Context) {
     /**
      * Downloads the APK, verifies its sha256, and launches the installer.
      * Must be called from a coroutine; blocking work runs on [Dispatchers.IO].
+     *
+     * [onProgress] reports download progress as a percentage 0..100 (or -1 when the server
+     * doesn't advertise a total size). It is invoked from a background thread.
      */
-    suspend fun downloadAndInstall(release: AppRelease): Result = withContext(Dispatchers.IO) {
+    suspend fun downloadAndInstall(
+        release: AppRelease,
+        onProgress: (Int) -> Unit = {}
+    ): Result = withContext(Dispatchers.IO) {
         if (!canRequestInstalls()) return@withContext Result.NeedsInstallPermission
 
         val targetFile = apkFile(release.versionCode)
-        // Reuse an already-downloaded, intact APK if present.
-        if (!(targetFile.exists() && verifySha256(targetFile, release.sha256))) {
+        // Reuse an already-downloaded, intact APK if present (nothing to download → 100%).
+        if (targetFile.exists() && verifySha256(targetFile, release.sha256)) {
+            onProgress(100)
+        } else {
             targetFile.parentFile?.mkdirs()
             if (targetFile.exists()) targetFile.delete()
 
             val downloaded = try {
-                downloadApk(release, targetFile)
+                downloadApk(release, targetFile, onProgress)
             } catch (t: Throwable) {
                 return@withContext Result.Failed(t.message ?: context.getString(R.string.update_error_download_failed))
             }
@@ -109,7 +117,7 @@ class UpdateManager(private val context: Context) {
      * copies the result into our FileProvider-mapped cache file. We poll the download
      * status from the coroutine rather than relying on a BroadcastReceiver.
      */
-    private suspend fun downloadApk(release: AppRelease, dest: File): Boolean {
+    private suspend fun downloadApk(release: AppRelease, dest: File, onProgress: (Int) -> Unit): Boolean {
         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
 
         val request = DownloadManager.Request(Uri.parse(release.downloadUrl)).apply {
@@ -126,14 +134,16 @@ class UpdateManager(private val context: Context) {
         }
 
         val downloadId = dm.enqueue(request)
+        onProgress(0)
 
         try {
-            // Poll until terminal status (success or failure).
+            // Poll until terminal status (success or failure), reporting progress each tick.
             while (true) {
-                val (status, localUri, reason) = queryDownload(dm, downloadId)
-                when (status) {
+                val state = queryDownload(dm, downloadId)
+                when (state.status) {
                     DownloadManager.STATUS_SUCCESSFUL -> {
-                        val src = resolveLocalFile(localUri)
+                        onProgress(100)
+                        val src = resolveLocalFile(state.localUri)
                             ?: return false
                         copyInto(src, dest)
                         // The intermediate DownloadManager file is no longer needed.
@@ -141,10 +151,13 @@ class UpdateManager(private val context: Context) {
                         return true
                     }
                     DownloadManager.STATUS_FAILED -> {
-                        throw IllegalStateException("DownloadManager failed (reason=$reason)")
+                        throw IllegalStateException("DownloadManager failed (reason=${state.reason})")
                     }
                     -1 -> return false // query returned no row
-                    else -> delay(POLL_INTERVAL_MS)
+                    else -> {
+                        onProgress(state.percent)
+                        delay(POLL_INTERVAL_MS)
+                    }
                 }
             }
         } finally {
@@ -153,22 +166,39 @@ class UpdateManager(private val context: Context) {
         }
     }
 
-    private data class DownloadState(val status: Int, val localUri: String?, val reason: Int)
+    private data class DownloadState(
+        val status: Int,
+        val localUri: String?,
+        val reason: Int,
+        val bytesSoFar: Long,
+        val totalBytes: Long
+    ) {
+        /** Download progress 0..100, or -1 when the total size is not yet known. */
+        val percent: Int
+            get() = if (totalBytes > 0L) ((bytesSoFar * 100L) / totalBytes).toInt().coerceIn(0, 100) else -1
+    }
 
     private fun queryDownload(dm: DownloadManager, id: Long): DownloadState {
         val query = DownloadManager.Query().setFilterById(id)
         dm.query(query).use { cursor: Cursor ->
-            if (!cursor.moveToFirst()) return DownloadState(-1, null, 0)
+            if (!cursor.moveToFirst()) return DownloadState(-1, null, 0, 0L, 0L)
             val status = cursor.getIntOrZero(DownloadManager.COLUMN_STATUS)
             val localUri = cursor.getStringOrNull(DownloadManager.COLUMN_LOCAL_URI)
             val reason = cursor.getIntOrZero(DownloadManager.COLUMN_REASON)
-            return DownloadState(status, localUri, reason)
+            val bytesSoFar = cursor.getLongOrZero(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
+            val totalBytes = cursor.getLongOrZero(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
+            return DownloadState(status, localUri, reason, bytesSoFar, totalBytes)
         }
     }
 
     private fun Cursor.getIntOrZero(column: String): Int {
         val idx = getColumnIndex(column)
         return if (idx >= 0) getInt(idx) else 0
+    }
+
+    private fun Cursor.getLongOrZero(column: String): Long {
+        val idx = getColumnIndex(column)
+        return if (idx >= 0) getLong(idx) else 0L
     }
 
     private fun Cursor.getStringOrNull(column: String): String? {

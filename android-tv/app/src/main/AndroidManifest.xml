@@ -104,5 +104,15 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Relaunch the app automatically right after a self-update is installed.
+             MY_PACKAGE_REPLACED is a protected system broadcast sent only to this app. -->
+        <receiver
+            android:name=".update.RestartOnUpdateReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

@@ -29,6 +29,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.tvvideohub.tv.BuildConfig
 import com.tvvideohub.tv.R
 import com.tvvideohub.tv.core.AppLanguage
 import com.tvvideohub.tv.core.LocaleHelper
@@ -180,6 +181,19 @@ private fun SettingsScreen(onBack: () -> Unit, onLanguageChanged: () -> Unit) {
             AppButton(onClick = { context.startActivity(Intent(context, StorageActivity::class.java)) }) {
                 Text(stringResource(R.string.settings_manage_storage))
             }
+
+            // --- About ---
+            Text(
+                stringResource(R.string.settings_about_heading),
+                style = MaterialTheme.typography.titleMedium,
+                color = colors.onBackground,
+                modifier = Modifier.padding(top = 28.dp, bottom = 8.dp)
+            )
+            Text(
+                stringResource(R.string.settings_version, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.onSurface
+            )
 
             AppButton(onClick = onBack, modifier = Modifier.padding(top = 32.dp)) { Text(stringResource(R.string.action_back)) }
         }

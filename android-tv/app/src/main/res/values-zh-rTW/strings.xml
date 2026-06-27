@@ -80,6 +80,8 @@
     <!-- Storage -->
     <string name="settings_storage_heading">儲存空間</string>
     <string name="settings_manage_storage">管理儲存空間與快取</string>
+    <string name="settings_about_heading">關於</string>
+    <string name="settings_version">版本 %1$s（版本號 %2$d）</string>
     <string name="storage_title">儲存空間</string>
     <string name="storage_cached_videos">本應用程式快取的影片：%1$s</string>
     <string name="storage_device">裝置儲存空間：%2$s 中剩餘 %1$s</string>
@@ -104,6 +106,7 @@
     <string name="update_action_later">稍後</string>
     <string name="update_downloading">正在下載更新…</string>
     <string name="update_downloading_body">正在下載並驗證新版本，請稍候。</string>
+    <string name="update_downloading_percent">%1$d%%</string>
     <string name="update_verifying">正在驗證更新…</string>
     <string name="update_failed">更新失敗。</string>
     <string name="update_failed_title">更新失敗</string>

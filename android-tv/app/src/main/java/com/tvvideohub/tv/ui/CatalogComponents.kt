@@ -6,8 +6,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -94,10 +96,7 @@ fun UpdateOverlay(
                     onDismiss = onDismiss
                 )
 
-                is UpdateUiState.Downloading -> InfoPanel(
-                    title = stringResource(R.string.update_downloading),
-                    body = stringResource(R.string.update_downloading_body)
-                )
+                is UpdateUiState.Downloading -> DownloadingPanel(percent = updateState.percent)
 
                 is UpdateUiState.NeedsPermission -> NeedsPermissionPanel(
                     onOpenSettings = onOpenSettings,
@@ -226,18 +225,48 @@ private fun FailedPanel(message: String, onDismiss: () -> Unit) {
     }
 }
 
+/**
+ * Download-in-progress panel: title + a determinate progress bar + percentage. [percent] is
+ * 0..100, or -1 while the total size is unknown (then we show the generic "please wait" body
+ * with the bar empty). The bar is a plain Box (tv-material has no progress indicator).
+ */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun InfoPanel(title: String, body: String) {
+private fun DownloadingPanel(percent: Int) {
+    val known = percent in 0..100
+    val fraction = if (known) percent / 100f else 0f
+
     Text(
-        text = title,
+        text = stringResource(R.string.update_downloading),
         style = MaterialTheme.typography.headlineSmall,
         color = MaterialTheme.colorScheme.onSurface
     )
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 20.dp)
+            .height(8.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(Color(0x33FFFFFF))
+    ) {
+        if (fraction > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(MaterialTheme.colorScheme.primary)
+            )
+        }
+    }
     Text(
-        text = body,
+        text = if (known)
+            stringResource(R.string.update_downloading_percent, percent)
+        else
+            stringResource(R.string.update_downloading_body),
         style = MaterialTheme.typography.bodyMedium,
         color = Color(0xFF8893A7),
         modifier = Modifier.padding(top = 12.dp)
     )
 }
+

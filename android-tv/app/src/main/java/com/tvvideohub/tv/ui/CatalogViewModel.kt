@@ -27,7 +27,8 @@ sealed interface UpdateUiState {
     data object Idle : UpdateUiState
     /** A newer release is available; offer it to the user. */
     data class Available(val release: AppRelease) : UpdateUiState
-    data object Downloading : UpdateUiState
+    /** Downloading the APK; [percent] is 0..100, or -1 while the total size is unknown. */
+    data class Downloading(val percent: Int) : UpdateUiState
     /** The app must be granted "install unknown apps" before it can self-update. */
     data class NeedsPermission(val release: AppRelease) : UpdateUiState
     data object InstallLaunched : UpdateUiState
@@ -85,11 +86,18 @@ class CatalogViewModel(
         }
     }
 
-    /** User accepted the update: download, verify, and launch the installer. */
+    /** User accepted the update: download (reporting progress), verify, and launch the installer. */
     fun startUpdate(release: AppRelease) {
-        _updateState.value = UpdateUiState.Downloading
+        _updateState.value = UpdateUiState.Downloading(percent = -1)
         viewModelScope.launch {
-            when (val result = updateManager.downloadAndInstall(release)) {
+            val result = updateManager.downloadAndInstall(release) { percent ->
+                // onProgress fires from a background thread; only refresh while still downloading
+                // (so a late tick can't clobber a Failed/dismissed state).
+                _updateState.update { current ->
+                    if (current is UpdateUiState.Downloading) UpdateUiState.Downloading(percent) else current
+                }
+            }
+            when (result) {
                 is UpdateManager.Result.InstallLaunched ->
                     _updateState.value = UpdateUiState.InstallLaunched
                 is UpdateManager.Result.NeedsInstallPermission ->
