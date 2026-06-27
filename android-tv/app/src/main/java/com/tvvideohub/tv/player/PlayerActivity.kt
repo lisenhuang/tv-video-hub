@@ -16,6 +16,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
@@ -24,6 +25,8 @@ import com.tvvideohub.tv.core.PlaybackStore
 import com.tvvideohub.tv.core.SettingsStore
 import com.tvvideohub.tv.data.CatalogRepository
 import com.tvvideohub.tv.download.DownloadUtil
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
@@ -51,6 +54,13 @@ class PlayerActivity : ComponentActivity() {
     private var player: ExoPlayer? = null
     private lateinit var playerView: PlayerView
     private lateinit var messageView: TextView
+
+    // Background prefetch: caches the whole file while it plays so playback doesn't stall on a
+    // slow link. Best-effort and cancellable — it never affects the player if it fails.
+    @Volatile private var prefetchWriter: CacheWriter? = null
+    private var prefetchJob: Job? = null
+    // True while we hold PRIORITY_PLAYBACK in the shared PriorityTaskManager (so the prefetch yields).
+    private var holdingPlaybackPriority = false
 
     private val videoId: String by lazy { intent.getStringExtra(EXTRA_VIDEO_ID).orEmpty() }
     private val directUri: String? by lazy { intent.getStringExtra(EXTRA_DIRECT_URI) }
@@ -159,6 +169,13 @@ class PlayerActivity : ComponentActivity() {
                 // so the screensaver can still come up when the device is genuinely idle.
                 setKeepScreenOn(isPlaying)
             }
+
+            override fun onIsLoadingChanged(isLoading: Boolean) {
+                // While the player is actively loading, claim playback priority so the background
+                // prefetch yields the network; release it the moment the player stops loading so
+                // the prefetch can race ahead in the gaps.
+                setPlaybackLoading(isLoading)
+            }
         })
 
         // Resume where we left off last time (same episode, keyed by stable video id).
@@ -167,6 +184,49 @@ class PlayerActivity : ComponentActivity() {
         exo.playWhenReady = true
         exo.prepare()
         playerView.requestFocus()
+
+        // Online streaming only: eagerly pull the whole file into the shared cache so playback
+        // won't stall on a slow/bursty link. Offline/direct playback is already fully cached.
+        if (directUri.isNullOrBlank()) startPrefetch(uri, cacheKey)
+    }
+
+    /**
+     * Kick off a full-speed background prefetch of [uri] into the shared cache under [cacheKey].
+     * Reuses any bytes playback already cached (no re-fetch, no duplication) and yields to the
+     * player via the shared [DownloadUtil.getPriorityTaskManager]. Best-effort: failures are
+     * swallowed so they can never disrupt playback.
+     */
+    private fun startPrefetch(uri: String, cacheKey: String) {
+        if (cacheKey.isBlank()) return
+        cancelPrefetch()
+        prefetchJob = lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val writer = DownloadUtil.buildPrefetchWriter(applicationContext, uri, cacheKey)
+                prefetchWriter = writer
+                writer.cache() // blocks until fully cached, cancelled, or a network error
+            } catch (_: Throwable) {
+                // Cancellation or a network hiccup — playback is unaffected, so just stop quietly.
+            }
+        }
+    }
+
+    private fun cancelPrefetch() {
+        prefetchWriter?.let { runCatching { it.cancel() } }
+        prefetchWriter = null
+        prefetchJob?.cancel()
+        prefetchJob = null
+    }
+
+    /** Acquire/release PRIORITY_PLAYBACK exactly once, keeping add/remove balanced. */
+    private fun setPlaybackLoading(isLoading: Boolean) {
+        val ptm = DownloadUtil.getPriorityTaskManager()
+        if (isLoading && !holdingPlaybackPriority) {
+            ptm.add(C.PRIORITY_PLAYBACK)
+            holdingPlaybackPriority = true
+        } else if (!isLoading && holdingPlaybackPriority) {
+            ptm.remove(C.PRIORITY_PLAYBACK)
+            holdingPlaybackPriority = false
+        }
     }
 
     private fun mapMimeType(mime: String?): String? = when (mime?.lowercase()) {
@@ -207,6 +267,8 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun releasePlayer() {
+        cancelPrefetch()
+        setPlaybackLoading(false) // release any held playback priority so the manager stays balanced
         playerView.player = null
         player?.release()
         player = null

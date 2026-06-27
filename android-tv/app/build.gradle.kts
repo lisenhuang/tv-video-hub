@@ -19,17 +19,21 @@ android {
         applicationId = "com.tvvideohub.tv"
         minSdk = 23
         targetSdk = 34
-        // 5 / 1.0.4 — keep the screen awake during playback (FLAG_KEEP_SCREEN_ON held while the
+        // 6 / 1.0.5 — cache-while-playing: a full-speed background prefetch pulls the whole video
+        // into the shared cache as it plays (no Download click needed), so playback no longer
+        // stalls on a slow/bursty link. It yields to live playback via a PriorityTaskManager and
+        // shares the same cache + video-id key, so bytes are fetched once, never duplicated.
+        // (5 / 1.0.4 kept the screen awake during playback (FLAG_KEEP_SCREEN_ON held while the
         // player is actually playing) so the Android TV screensaver/daydream no longer kicks in
         // mid-video; released on pause/stop so it can still appear when genuinely idle.
-        // (4 / 1.0.3 added client-side video previews (extract a frame when the API has no
+        // 4 / 1.0.3 added client-side video previews (extract a frame when the API has no
         // thumbnail, cached by stable id) + resume playback position per episode on reopen.
         // 3 / 1.0.2 added touch support: tv-material clickables are D-pad-only, so phones couldn't
         // press any button/card; AppButton/tapClickable add a touch-tap path, D-pad still works.
         // 2 / 1.0.1 fixed the first-launch crash: CatalogRepository no longer reads
         // ApiClient.service eagerly.) Same signing key, higher versionCode → installable update.
-        versionCode = 5
-        versionName = "1.0.4"
+        versionCode = 6
+        versionName = "1.0.5"
 
         // Exposed to Kotlin via BuildConfig.BACKEND_BASE_URL.
         buildConfigField("String", "BACKEND_BASE_URL", "\"$backendBaseUrl\"")

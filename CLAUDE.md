@@ -123,6 +123,13 @@ never fires. Do all of this in the same change:
      a stale or blank hash on a real bump makes the update fail).
    - `SizeBytes`, `Notes` (changelog shown in the update prompt), `PublishedAt` → update to match.
    - `DownloadUrl` → keep it pointing at where that exact APK is published.
+   - **Do this bump now — do NOT wait for the GitHub Actions build to publish the APK first.**
+     `VersionCode`/`VersionName`/`Notes` are plain metadata: set them in `appsettings.json` in the
+     *same* change as the gradle bump. Only `Sha256` (and `SizeBytes`) describe the published-APK
+     bytes, so those are the *only* fields that may need filling/reconciling once CI publishes the
+     release (a locally-built APK usually hashes differently — different keystore/JDK/gradle). The
+     version bump itself never blocks on CI; just don't *deploy* the backend with a `Sha256` that
+     doesn't match the APK actually served (an unmatched hash fails the update, fail-closed).
 4. **Keep the three in lockstep.** The gradle `versionCode`/`versionName`, the committed
    `wwwroot/app/app-release.apk` bytes, and the backend `AppRelease.VersionCode`/`Sha256` must
    all describe the *same* build. Mismatches break the OTA: an un-bumped backend `VersionCode`

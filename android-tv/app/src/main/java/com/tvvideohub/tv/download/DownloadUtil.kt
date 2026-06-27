@@ -1,14 +1,19 @@
 package com.tvvideohub.tv.download
 
 import android.content.Context
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PriorityTaskManager
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.DatabaseProvider
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.offline.Download
@@ -18,6 +23,7 @@ import androidx.media3.exoplayer.offline.DownloadRequest
 import com.tvvideohub.tv.data.dto.VideoDetail
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.io.InterruptedIOException
 import java.util.concurrent.Executors
 
 /**
@@ -52,6 +58,7 @@ object DownloadUtil {
     @Volatile private var httpDataSourceFactory: DefaultHttpDataSource.Factory? = null
     @Volatile private var downloadManager: DownloadManager? = null
     @Volatile private var notificationHelper: DownloadNotificationHelper? = null
+    @Volatile private var priorityTaskManager: PriorityTaskManager? = null
 
     fun getDatabaseProvider(context: Context): DatabaseProvider =
         databaseProvider ?: synchronized(lock) {
@@ -90,6 +97,52 @@ object DownloadUtil {
             .setCache(getCache(context))
             .setUpstreamDataSourceFactory(upstream)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+    }
+
+    // ---- Background prefetch (cache-the-whole-file-while-playing) ----------------
+
+    /**
+     * Process-wide priority arbiter shared by playback and the background prefetch. The player
+     * registers [C.PRIORITY_PLAYBACK] while it is actively loading (see PlayerActivity); the
+     * prefetch reads at the lower [C.PRIORITY_DOWNLOAD] and *blocks* whenever playback is loading.
+     * Net effect: the prefetch runs full speed in the gaps but instantly yields the network the
+     * moment live playback needs it, so it can never *cause* a rebuffer.
+     */
+    fun getPriorityTaskManager(): PriorityTaskManager =
+        priorityTaskManager ?: synchronized(lock) {
+            priorityTaskManager ?: PriorityTaskManager().also { priorityTaskManager = it }
+        }
+
+    /**
+     * Cache-writing data source factory used ONLY by [buildPrefetchWriter]. Same shared cache and
+     * key scheme as playback, but its network reads pass through the priority gate above. Because
+     * writes land in the same [SimpleCache] under the same video-id key, prefetched bytes are
+     * reused by the player and by a later explicit download — fetched once, never duplicated.
+     */
+    private fun getPrefetchCacheDataSourceFactory(context: Context): CacheDataSource.Factory {
+        val yieldingUpstream = PriorityYieldDataSourceFactory(
+            DefaultDataSource.Factory(context.applicationContext, getHttpDataSourceFactory()),
+            getPriorityTaskManager(),
+            C.PRIORITY_DOWNLOAD
+        )
+        return CacheDataSource.Factory()
+            .setCache(getCache(context))
+            .setUpstreamDataSourceFactory(yieldingUpstream)
+    }
+
+    /**
+     * A [CacheWriter] that pulls the ENTIRE [uri] into the shared cache under [cacheKey] (the
+     * stable video id). Caller runs [CacheWriter.cache] on a background thread and calls
+     * [CacheWriter.cancel] to stop it (e.g. when the player closes). Bytes already cached by
+     * playback are skipped, so this only ever fetches the not-yet-watched remainder.
+     */
+    fun buildPrefetchWriter(context: Context, uri: String, cacheKey: String): CacheWriter {
+        val cacheDataSource = getPrefetchCacheDataSourceFactory(context).createDataSourceForDownloading()
+        val dataSpec = DataSpec.Builder()
+            .setUri(android.net.Uri.parse(uri))
+            .setKey(cacheKey)
+            .build()
+        return CacheWriter(cacheDataSource, dataSpec, /* temporaryBuffer = */ null, /* progressListener = */ null)
     }
 
     fun getDownloadManager(context: Context): DownloadManager =
@@ -176,5 +229,58 @@ object DownloadUtil {
             .setMimeType(detail.mimeType)
             .setData(json.encodeToString(DownloadMetadata.serializer(), meta).toByteArray())
             .build()
+    }
+}
+
+/** Wraps an upstream factory so every created source yields to higher-priority playback. */
+@UnstableApi
+private class PriorityYieldDataSourceFactory(
+    private val upstreamFactory: DataSource.Factory,
+    private val priorityTaskManager: PriorityTaskManager,
+    private val priority: Int
+) : DataSource.Factory {
+    override fun createDataSource(): DataSource =
+        PriorityYieldDataSource(upstreamFactory.createDataSource(), priorityTaskManager, priority)
+}
+
+/**
+ * A [DataSource] that blocks before each open/read until no higher-priority task (i.e. live
+ * playback) is registered with the [PriorityTaskManager]. This is what makes a full-speed
+ * prefetch politely step aside the instant the player needs the network.
+ */
+@UnstableApi
+private class PriorityYieldDataSource(
+    private val upstream: DataSource,
+    private val priorityTaskManager: PriorityTaskManager,
+    private val priority: Int
+) : DataSource {
+    override fun addTransferListener(transferListener: TransferListener) {
+        upstream.addTransferListener(transferListener)
+    }
+
+    override fun open(dataSpec: DataSpec): Long {
+        awaitTurn()
+        return upstream.open(dataSpec)
+    }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        awaitTurn()
+        return upstream.read(buffer, offset, length)
+    }
+
+    override fun getUri(): android.net.Uri? = upstream.uri
+
+    override fun getResponseHeaders(): Map<String, List<String>> = upstream.responseHeaders
+
+    override fun close() = upstream.close()
+
+    /** Block while higher-priority playback is loading; bail out cleanly if interrupted/cancelled. */
+    private fun awaitTurn() {
+        try {
+            priorityTaskManager.proceed(priority)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw InterruptedIOException()
+        }
     }
 }
