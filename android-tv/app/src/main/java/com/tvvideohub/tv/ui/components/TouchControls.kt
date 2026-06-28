@@ -24,6 +24,24 @@ fun Modifier.tapClickable(enabled: Boolean = true, onClick: () -> Unit): Modifie
     if (!enabled) this else pointerInput(onClick) { detectTapGestures { onClick() } }
 
 /**
+ * Touch tap + long-press path for tv-material3 Surfaces/Cards (which handle the D-pad only). A long
+ * hold fires [onLongPress]; a quick tap fires [onClick] — [detectTapGestures] makes the two mutually
+ * exclusive, so there's no double-fire. Pair this with a tv [androidx.tv.material3.Card]'s own
+ * `onClick`/`onLongClick` (those cover the D-pad ENTER short/long press); touch and D-pad come from
+ * different input sources, so the two paths never both fire for one gesture — same reasoning as
+ * [tapClickable].
+ */
+fun Modifier.tapOrLongPressClickable(
+    enabled: Boolean = true,
+    onLongPress: () -> Unit,
+    onClick: () -> Unit,
+): Modifier =
+    if (!enabled) this
+    else pointerInput(onClick, onLongPress) {
+        detectTapGestures(onLongPress = { onLongPress() }, onTap = { onClick() })
+    }
+
+/**
  * Drop-in replacement for tv-material3 [Button] that ALSO responds to touch taps, so the same UI
  * works on phones (touch) and TVs (D-pad). Visuals/focus behaviour are the tv [Button]'s; this only
  * adds the missing tap handling.

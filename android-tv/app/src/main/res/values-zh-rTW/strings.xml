@@ -38,10 +38,12 @@
     <string name="download_progress">正在下載 %1$d%%</string>
     <string name="download_available_offline">✓ 可離線觀看</string>
     <string name="download_failed">下載失敗</string>
-    <string name="download_status_completed">播放 • 長按可移除</string>
+    <string name="download_status_completed">播放 • 長按可刪除</string>
     <string name="download_status_downloading">正在下載 %1$d%% • 輕觸可取消</string>
     <string name="download_status_failed">失敗 • 輕觸可重試/移除</string>
     <string name="download_status_pending">等待中</string>
+    <string name="delete_confirm_title">刪除下載？</string>
+    <string name="delete_confirm_message">「%1$s」將從此裝置移除，之後可重新下載。</string>
 
     <!-- Detail screen -->
     <string name="detail_load_error">無法載入此影片。</string>

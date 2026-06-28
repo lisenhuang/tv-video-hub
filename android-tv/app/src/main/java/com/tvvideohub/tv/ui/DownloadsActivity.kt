@@ -2,14 +2,17 @@
 
 package com.tvvideohub.tv.ui
 
+import com.tvvideohub.tv.ui.components.AppButton
 import com.tvvideohub.tv.ui.components.rememberVideoFrame
-import com.tvvideohub.tv.ui.components.tapClickable
+import com.tvvideohub.tv.ui.components.tapOrLongPressClickable
 import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.annotation.OptIn
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,14 +22,24 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -54,6 +67,9 @@ import kotlinx.coroutines.delay
 /**
  * Lists downloaded (and in-progress) videos. Fully usable offline: it reads the local
  * Media3 download index and plays completed items straight from the cache.
+ *
+ * Long-press a card (touch hold or D-pad ENTER hold) to open a delete-confirmation modal.
+ * Short press / short ENTER: play (completed) or cancel (in-progress) — unchanged.
  */
 @OptIn(UnstableApi::class)
 class DownloadsActivity : ComponentActivity() {
@@ -80,6 +96,10 @@ private fun DownloadsScreen() {
             delay(1000)
         }
     }
+
+    // Which item's confirm-delete modal is open (null = closed).
+    var confirmFor by remember { mutableStateOf<OfflineVideo?>(null) }
+    val confirmOpen = confirmFor != null
 
     Box(Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 24.dp)) {
         Column(Modifier.fillMaxSize()) {
@@ -112,22 +132,45 @@ private fun DownloadsScreen() {
                                     )
                                 }
                             },
-                            onRemove = { Downloads.remove(context, item.id) }
+                            onRemove = { Downloads.remove(context, item.id) },
+                            onLongPress = { confirmFor = item }
                         )
                     }
                 }
             }
         }
+
+        // In-tree confirm overlay — sibling of the content Column, same pattern as UpdateOverlay.
+        DeleteConfirmOverlay(
+            item = confirmFor,
+            onConfirm = {
+                val target = confirmFor
+                confirmFor = null          // close synchronously before the next 1s poll
+                if (target != null) Downloads.remove(context, target.id)
+            },
+            onDismiss = { confirmFor = null }
+        )
     }
 }
 
 @OptIn(UnstableApi::class, ExperimentalTvMaterial3Api::class)
 @Composable
-private fun OfflineCard(item: OfflineVideo, onPlay: () -> Unit, onRemove: () -> Unit) {
+private fun OfflineCard(
+    item: OfflineVideo,
+    onPlay: () -> Unit,
+    onRemove: () -> Unit,
+    onLongPress: () -> Unit,
+) {
     val colors = MaterialTheme.colorScheme
     Card(
         onClick = { if (item.isComplete) onPlay() else onRemove() },
-        modifier = Modifier.fillMaxWidth().tapClickable { if (item.isComplete) onPlay() else onRemove() },
+        onLongClick = onLongPress,       // D-pad ENTER long press opens the confirm modal
+        modifier = Modifier
+            .fillMaxWidth()
+            .tapOrLongPressClickable(    // touch tap + touch long-press
+                onLongPress = onLongPress,
+                onClick = { if (item.isComplete) onPlay() else onRemove() },
+            ),
         scale = CardDefaults.scale(focusedScale = 1.08f),
         border = CardDefaults.border(focusedBorder = Border(BorderStroke(3.dp, colors.primary)))
     ) {
@@ -171,6 +214,65 @@ private fun OfflineCard(item: OfflineVideo, onPlay: () -> Unit, onRemove: () -> 
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 8.dp)
             )
+        }
+    }
+}
+
+/**
+ * Centered confirm modal for deleting a download. Mirrors [UpdateOverlay]: in-tree scrim Box +
+ * centered rounded surface — NOT a system Dialog, so D-pad focus works on TV. Renders nothing when
+ * [item] is null (early return), so it vanishes the instant we confirm or dismiss.
+ *
+ * Initial focus goes to Cancel (safe default for a destructive action). BackHandler dismisses.
+ */
+@OptIn(UnstableApi::class, ExperimentalTvMaterial3Api::class)
+@Composable
+private fun DeleteConfirmOverlay(
+    item: OfflineVideo?,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val current = item ?: return
+
+    BackHandler(enabled = true) { onDismiss() }
+
+    // Focus Cancel on open (safe); keyed on id so re-opening for a different item re-focuses.
+    val cancelFocus = remember { FocusRequester() }
+    LaunchedEffect(current.id) { runCatching { cancelFocus.requestFocus() } }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xCC000000)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 460.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = stringResource(R.string.delete_confirm_title),
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = stringResource(R.string.delete_confirm_message, current.title),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFF8893A7),
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 8.dp, bottom = 24.dp),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)) {
+                AppButton(onClick = onConfirm) { Text(stringResource(R.string.action_delete)) }
+                AppButton(onClick = onDismiss, modifier = Modifier.focusRequester(cancelFocus)) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
         }
     }
 }

@@ -28,7 +28,7 @@ import java.io.FileOutputStream
  */
 object VideoThumbnails {
     private const val DIR = "thumbs"
-    private const val FRAME_AT_US = 2_000_000L      // ~2s in: skips black intro / leader frames
+    private const val FALLBACK_FRAME_AT_US = 2_000_000L  // fallback when duration is unknown
     private const val MAX_W = 640
     private const val MAX_H = 360
     private const val JPEG_QUALITY = 80
@@ -102,13 +102,19 @@ object VideoThumbnails {
                 retriever.setDataSource(context, Uri.parse(sourceUrl))
             }
 
+            // Target the midpoint of the video — far more representative than the opening seconds.
+            // Falls back to FALLBACK_FRAME_AT_US when duration is unavailable (live streams, etc.).
+            val durationMs = retriever
+                .extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            val frameUs = if (durationMs > 0L) (durationMs / 2L) * 1000L else FALLBACK_FRAME_AT_US
+
             val bitmap: Bitmap = (
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                     retriever.getScaledFrameAtTime(
-                        FRAME_AT_US, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, MAX_W, MAX_H
+                        frameUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, MAX_W, MAX_H
                     )
                 } else {
-                    retriever.getFrameAtTime(FRAME_AT_US, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    retriever.getFrameAtTime(frameUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                 } ?: retriever.frameAtTime
                 ) ?: return null
 

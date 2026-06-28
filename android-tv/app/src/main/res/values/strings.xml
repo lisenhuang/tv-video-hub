@@ -38,10 +38,12 @@
     <string name="download_progress">Downloading %1$d%%</string>
     <string name="download_available_offline">✓ Available offline</string>
     <string name="download_failed">Download failed</string>
-    <string name="download_status_completed">Play • tap-and-hold to remove</string>
+    <string name="download_status_completed">Play • hold to delete</string>
     <string name="download_status_downloading">Downloading %1$d%% • tap to cancel</string>
     <string name="download_status_failed">Failed • tap to retry/remove</string>
     <string name="download_status_pending">Pending</string>
+    <string name="delete_confirm_title">Delete download?</string>
+    <string name="delete_confirm_message">"%1$s" will be removed from this device. You can download it again later.</string>
 
     <!-- Detail screen -->
     <string name="detail_load_error">Couldn\'t load this video.</string>
