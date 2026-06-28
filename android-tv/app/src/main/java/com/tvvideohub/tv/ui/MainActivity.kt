@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
                         initialUrl = vm.currentBaseUrl ?: BuildConfig.BACKEND_BASE_URL,
                         onTest = vm::test,
                         onSave = vm::saveBaseUrl,
+                        onOpenDownloads = { open(DownloadsActivity::class.java) },
                     )
 
                     is RootState.Reconfigure -> BaseUrlScreen(
@@ -64,7 +65,10 @@ class MainActivity : ComponentActivity() {
                         onRetry = vm::refresh,
                     )
 
-                    is RootState.NeedsAccessCode -> AccessCodeScreen(onSubmit = vm::submitAccessCode)
+                    is RootState.NeedsAccessCode -> AccessCodeScreen(
+                        onSubmit = vm::submitAccessCode,
+                        onOpenDownloads = { open(DownloadsActivity::class.java) },
+                    )
 
                     is RootState.Ready -> CatalogRoute(
                         onVideoSelected = { id -> startActivity(DetailActivity.intent(this, id)) },

@@ -131,9 +131,15 @@ fun BaseUrlScreen(
 /**
  * Access-code gate: shown when the backend requires a code the app doesn't have. [onSubmit] saves
  * + verifies the code and returns whether it unlocked content; false shows an "invalid" hint.
+ * [onOpenDownloads], when provided, renders a secondary button so the user can still reach videos
+ * they already downloaded — those play fully offline and need no access code (mirrors
+ * [OfflineScreen] / [BaseUrlScreen]).
  */
 @Composable
-fun AccessCodeScreen(onSubmit: suspend (String) -> Boolean) {
+fun AccessCodeScreen(
+    onSubmit: suspend (String) -> Boolean,
+    onOpenDownloads: (() -> Unit)? = null,
+) {
     var code by remember { mutableStateOf("") }
     var error by remember { mutableStateOf(false) }
     var checking by remember { mutableStateOf(false) }
@@ -175,19 +181,27 @@ fun AccessCodeScreen(onSubmit: suspend (String) -> Boolean) {
                 )
             }
 
-            AppButton(
-                onClick = {
-                    if (code.length < 6 || checking) return@AppButton
-                    checking = true
-                    scope.launch {
-                        val ok = runCatching { onSubmit(code) }.getOrDefault(false)
-                        checking = false
-                        error = !ok
-                    }
-                },
-                modifier = Modifier.padding(top = 24.dp)
+            Row(
+                modifier = Modifier.padding(top = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Text(stringResource(if (checking) R.string.access_code_checking else R.string.access_code_submit))
+                AppButton(
+                    onClick = {
+                        if (code.length < 6 || checking) return@AppButton
+                        checking = true
+                        scope.launch {
+                            val ok = runCatching { onSubmit(code) }.getOrDefault(false)
+                            checking = false
+                            error = !ok
+                        }
+                    }
+                ) {
+                    Text(stringResource(if (checking) R.string.access_code_checking else R.string.access_code_submit))
+                }
+
+                if (onOpenDownloads != null) {
+                    AppButton(onClick = onOpenDownloads) { Text(stringResource(R.string.action_open_downloads)) }
+                }
             }
         }
     }

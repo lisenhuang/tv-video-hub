@@ -19,6 +19,13 @@ android {
         applicationId = "com.tvvideohub.tv"
         minSdk = 23
         targetSdk = 34
+        // 15 / 1.0.14 — reach downloads from the launch gate: the access-code screen and the
+        // first-run setup screen now show a "Downloads" button so a user who's already downloaded
+        // videos can watch them offline even without a valid access code or a configured backend
+        // URL (matches what the offline / reconfigure screens already offered). UI-only; no API,
+        // cache-key, or DB change, so old apps and existing downloads are unaffected.
+        // 13 / 1.0.12 — loop catalog playback: the player loops the catalog (repeats the single
+        // video when only one is present).
         // 12 / 1.0.11 — keep the screen awake during a self-update download: while the new APK is
         // downloading, the catalog now holds keepScreenOn (same approach the player uses during
         // playback) so the Android TV screensaver/daydream can't kick in mid-download and interrupt
@@ -55,8 +62,8 @@ android {
         // press any button/card; AppButton/tapClickable add a touch-tap path, D-pad still works.
         // 2 / 1.0.1 fixed the first-launch crash: CatalogRepository no longer reads
         // ApiClient.service eagerly.) Same signing key, higher versionCode → installable update.
-        versionCode = 14
-        versionName = "1.0.13"
+        versionCode = 15
+        versionName = "1.0.14"
 
         // Exposed to Kotlin via BuildConfig.BACKEND_BASE_URL.
         buildConfigField("String", "BACKEND_BASE_URL", "\"$backendBaseUrl\"")
